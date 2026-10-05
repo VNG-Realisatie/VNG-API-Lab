@@ -12,6 +12,7 @@ Per MijnService zijn er meerdere profielen: één per soort bron. Ze testen deze
 |---|---|---|
 | MijnZaken | [`mijnzaken/mijnzaken-next.arazzo.yaml`](mijnzaken/mijnzaken-next.arazzo.yaml) | Bron die de MijnZaken API (`apis/rest/zaken/next.yaml`) aanbiedt |
 | MijnZaken | [`mijnzaken/zgw.arazzo.yaml`](mijnzaken/zgw.arazzo.yaml) | Zaaksysteem met de ZGW Zaken API (1.5.1, gemma-zaken `current_version`) |
+| MijnTaken | [`mijntaken/mijntaken-next.arazzo.yaml`](mijntaken/mijntaken-next.arazzo.yaml) | Provider die de MijnTaken API (`apis/rest/taken/next.yaml`) aanbiedt |
 
 ## Waarom niet alleen Schemathesis
 
@@ -25,7 +26,11 @@ aansluitprofiel controleert of de bron zich als geheel goed gedraagt:
 
 Respect controleert bij elke stap ook statuscode, content-type en schema tegen de OpenAPI-spec.
 
-## Workflows (gelijk voor elk MijnZaken-profiel)
+## Workflows
+
+Elk profiel heeft dezelfde basis (hieronder voor MijnZaken). MijnTaken heeft dezelfde set voor
+taken, plus `taken-bij-zaak`: de URN van een zaak uit MijnZaken is het filter voor
+`GET /taken?context=`, en de taken moeten naar die zaak verwijzen.
 
 | Workflow | Wat het test |
 |---|---|
@@ -55,7 +60,9 @@ Eén workflow draaien kan met `-w overzicht-naar-detail`.
 | Profiel | Tegen | Resultaat |
 |---|---|---|
 | mijnzaken-next | Prism-mock (`pnpm mock`) | 2 van 5. Een statische mock kan geen 404 of autorisatie per burger |
-| mijnzaken-next | [`referentie-server.js`](mijnzaken/referentie-server.js) | 5 van 5 |
+| mijnzaken-next | [`referentie-server.js`](referentie-server.js) | 5 van 5 |
+| mijntaken-next | Prism-mock | 3 van 6. Geen 404 of autorisatie per burger |
+| mijntaken-next | `referentie-server.js` (serveert zaken en taken) | 6 van 6 |
 | zgw | [`zgw-referentie-server.js`](mijnzaken/zgw-referentie-server.js), `AUTORISATIE=applicatie` (zoals ZGW 1.x nu werkt) | 3 van 5. Beide autorisatieworkflows falen: een applicatietoken ziet alle zaken |
 | zgw | `zgw-referentie-server.js`, `AUTORISATIE=burger` | 5 van 5 |
 
@@ -77,4 +84,4 @@ kleine referentieserver.
 pnpm test:aansluitprofielen
 ```
 
-Start beide referentieservers en draait beide profielen. Draait ook in CI.
+Start de referentieservers en draait alle profielen. Draait ook in CI.

@@ -4,9 +4,15 @@ info:
   description: |
     De **MijnTaken API** standaardiseert hoe portalen klantgerelateerde gegevens tonen en acties uitvoeren namens hun gebruikers. Het doel: een eindgebruiker kan informatie en taken raadplegen op elk aangesloten portaal, ongeacht welke organisatie de gegevens beheert — vergelijkbaar met hoe je met je telefoon in het buitenland belt via een ander netwerk, zonder dat je iets hoeft in te stellen.
 
-    De API is opgezet als een **kern met uitbreidingssets**: het `/context/zoek`-endpoint retourneert een samengesteld object waarvan de inhoud via de `include`-parameter wordt gestuurd. Initieel worden taken ondersteund; andere resource-typen (bijv. contactmomenten, zaakstatus) kunnen worden toegevoegd zonder bestaande implementaties te breken.
+    De API volgt hetzelfde skelet als de andere Mijn-API's: `GET /taken` met filters en paginering voor het overzicht, `GET /taken/{uuid}` voor het detail.
 
-    Identificatie en authenticatie van eindgebruikers vallen buiten de scope van dit contract; die worden afgehandeld door een externe identity provider (zoals DigiD of eHerkenning).
+    ## De burger komt uit het token
+
+    De API kent geen `klantId`-parameter. De provider leidt de burger af uit het toegangstoken (zie [`patterns/federated-auth`](../../../patterns/federated-auth/next.yaml)) en geeft alleen taken van die burger terug. Een taak van iemand anders opvragen met een geldig eigen token geeft `403`. Inloggen zelf (DigiD, eHerkenning) gebeurt bij een externe identity provider.
+
+    ## Taken bij een zaak of product
+
+    Een taak verwijst met `context.urn` naar de zaak, het product of het dossier waar hij bij hoort. Dezelfde URN staat als `urn` op de zaak in MijnZaken. Een portaal haalt de taken bij een zaak op met `GET /taken?context={urn van de zaak}`.
 
     ## Principes
 
@@ -29,7 +35,7 @@ info:
   version: next
   contact:
     name: VNG Realisatie
-    url: https://github.com/vng-realisatie/mijn-taken-api
+    url: https://github.com/VNG-Realisatie/vng-api-lab
     email: standaarden.ondersteuning@vng.nl
   license:
     name: EUPL-1.2
@@ -41,54 +47,51 @@ servers:
     description: Productie
 
 tags:
-  - name: Context
-    description: Raadpleeg samengestelde klantgerelateerde gegevens
   - name: Taken
     description: |
-      Raadpleeg taken: samenvattingen in `POST /context/zoek` (veld `taken`), volledige taak via
-      `GET /taken/{uuid}`. Mutaties (wijzigen, afronden) vallen buiten dit contract — uitvoering
-      verloopt bij de provider.
+      Raadpleeg taken: samenvattingen via `GET /taken`, volledige taak via `GET /taken/{uuid}`.
+      Mutaties (wijzigen, afronden) vallen buiten dit contract; uitvoering verloopt bij de
+      provider.
+
+security:
+  - FederatedOAuth2: [taken:lezen]
 
 paths:
-  /context/zoek:
-    post:
-      operationId: zoekContext
-      summary: Zoek context
+  /taken:
+    get:
+      operationId: listTaken
+      summary: Taken van de ingelogde burger
       description: |
-        Retourneert een samengesteld object met klantgerelateerde gegevens voor
-        de opgegeven klant en optionele context. Via de `include`-parameter
-        bepaalt de aanroeper welke resource-typen worden meegeleverd.
+        Geeft een gepagineerde lijst van taken van de burger uit het token, als samenvattingen.
+        Type-specifieke uitvoeringsvelden zitten alleen in `GET /taken/{uuid}`.
 
-        Dit endpoint is bedoeld om verschillende overzichts- en contextschermen
-        te bedienen vanuit één call. Voorbeelden:
+        Voorbeelden:
 
-        | Scherm | `contextId` | `include` |
-        |---|---|---|
-        | MijnTaken | — | `["taken"]` |
-        | Overzicht per domein | — | `["taken", "contactmomenten"]` |
-        | Zaak-contextscherm | `urn:nl:gemeenten:zaak:2026-00042` | `["taken", "contactmomenten"]` |
+        | Scherm | Aanroep |
+        |---|---|
+        | MijnTaken | `GET /taken?status=open` |
+        | Zaak-detailscherm | `GET /taken?context=urn:nl:gemeenten:zaak:11234899818` |
 
-        Initieel wordt alleen `taken` ondersteund. Nieuwe resource-typen
-        kunnen worden toegevoegd zonder bestaande implementaties te breken:
-        clients negeren typen die ze niet kennen.
-
-        **Ontwerpkeuze — POST als query:**
-        Deze operatie gebruikt `POST` omdat de filtercriteria in de request body
-        worden meegegeven. Qua semantiek gedraagt de operatie zich als de
-        [HTTP QUERY method (IETF-draft)](https://www.ietf.org/archive/id/draft-ietf-httpbis-safe-method-w-body-05.txt):
-        zij is **safe** (geen neveneffecten) en **idempotent** (herhaalde aanroep
-        met dezelfde body geeft hetzelfde resultaat). Portalen mogen de aanroep
-        dan ook als zodanig behandelen — cachen, herhalen bij netwerkstoringen, etc.
-        Zodra HTTP QUERY breed ondersteund wordt door clients en gateways, kan
-        dit endpoint zonder gedragswijziging worden gemigreerd.
+        In de querystring staan alleen filters (status, een context-URN), nooit gegevens die
+        de burger identificeren; die komen uit het token.
       tags:
-        - Context
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ContextQuery"
+        - Taken
+      parameters:
+        - name: context
+          in: query
+          description: Alleen taken bij deze context (zaak, product of dossier), als URN.
+          schema:
+            type: string
+            pattern: "^urn:"
+          example: "urn:nl:gemeenten:zaak:11234899818"
+        - name: status
+          in: query
+          description: Alleen taken met deze status.
+          schema:
+            type: string
+            x-extensible-enum: [open, afgerond, geannuleerd]
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
       responses:
         "200":
           description: Succesvol
@@ -98,9 +101,24 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ContextResultaat"
+                $ref: "#/components/schemas/TaakSamenvattingLijst"
               example:
-                taken:
+                count: 5
+                next: null
+                previous: null
+                results:
+                  - uuid: "7d1e2f3a-4b5c-4d6e-8f70-112233445566"
+                    titel:
+                      nl: "Geef informatie voor uw aanvraag subsidie geluidsisolatie"
+                      en: "Provide information for your noise insulation grant application"
+                    status: "open"
+                    deadline: "2026-10-07T23:59:59+02:00"
+                    context:
+                      urn: "urn:nl:gemeenten:zaak:11234899818"
+                      canonicalUrl: "https://portaal.gemeente.nl/zaken/11234899818"
+                    uitvoering:
+                      type: "formulier"
+                      canonicalUrl: "https://portaal.gemeente.nl/taken/7d1e2f3a/uitvoeren"
                   - uuid: "550e8400-e29b-41d4-a716-446655440000"
                     titel:
                       nl: "Kentekenbewijs uploaden"
@@ -192,71 +210,65 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Taak"
+              example:
+                uuid: "7d1e2f3a-4b5c-4d6e-8f70-112233445566"
+                titel:
+                  nl: "Geef informatie voor uw aanvraag subsidie geluidsisolatie"
+                  en: "Provide information for your noise insulation grant application"
+                status: "open"
+                deadline: "2026-10-07T23:59:59+02:00"
+                context:
+                  urn: "urn:nl:gemeenten:zaak:11234899818"
+                  canonicalUrl: "https://portaal.gemeente.nl/zaken/11234899818"
+                uitvoering:
+                  type: "formulier"
+                  canonicalUrl: "https://portaal.gemeente.nl/taken/7d1e2f3a/uitvoeren"
+                  definitie:
+                    endpoint: "https://api.gemeente.nl/formulieren/geluidsisolatie-informatie"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
 
 components:
+  parameters:
+    page:
+      name: page
+      in: query
+      description: Het paginanummer dat moet worden opgehaald.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    pageSize:
+      name: pageSize
+      in: query
+      description: Het aantal items per pagina.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
   schemas:
-    ContextQuery:
+    TaakSamenvattingLijst:
+      description: Gepagineerde lijst volgens `patterns/pagination`.
       type: object
-      description: Zoekcriteria voor het opvragen van een samengestelde contextrespons.
-      required:
-        - klantId
+      required: [count, next, previous, results]
       properties:
-        klantId:
-          type: string
-          description: Identifier van de klant (bijv. sub-claim uit het ID-token).
-          example: "a8f3c1d2-7e44-4b1a-9c0f-123456789abc"
-        contextId:
-          type: string
+        count:
+          type: integer
+          description: Totaal aantal taken over alle pagina's.
+        next:
+          type: [string, "null"]
           format: uri
-          pattern: "^urn:"
-          description: |
-            URN-identifier van de context waarbinnen gezocht wordt
-            (bijv. een zaak, product of dossier). Het URN-formaat maakt
-            de identifier namespace-safe en onafhankelijk van het type context.
-          example: "urn:nl:gemeenten:zaak:2026-00042"
-        include:
+        previous:
+          type: [string, "null"]
+          format: uri
+        results:
           type: array
-          description: |
-            Resource-typen waarvan een **samenvatting** wordt meegeleverd in de respons.
-            Als afwezig of leeg, worden alle door de provider ondersteunde typen
-            teruggegeven. Clients negeren typen die ze niet kennen.
-
-            Let op: de respons bevat altijd samenvattingen. Voor resource-typen
-            waarvoor een detail-endpoint bestaat (bijv. `GET /taken/{uuid}` voor
-            afhandeling) kan aanvullende informatie worden opgevraagd.
-
-            Open lijst — nieuwe waarden kunnen worden toegevoegd zonder
-            bestaande implementaties te breken.
-          items:
-            type: string
-            x-extensible-enum:
-              - taken
-          example: ["taken"]
-
-    ContextResultaat:
-      type: object
-      description: |
-        Samengesteld object met klantgerelateerde gegevens.
-        Bevat per resource-type een lijst van **samenvattingen**. Voor resource-typen
-        waarvoor een detail-endpoint bestaat (bijv. `GET /taken/{uuid}` voor afhandeling)
-        kan aanvullende informatie worden opgevraagd.
-        Bevat alleen de resource-typen die via `include` zijn opgevraagd
-        én door de provider worden ondersteund. Afwezige sleutels betekenen
-        dat het type niet is opgevraagd of niet ondersteund wordt.
-      properties:
-        taken:
-          type: array
-          description: |
-            Taken die voldoen aan de opgegeven filtercriteria. Aanwezig als
-            `taken` in `include` staat (of `include` afwezig is).
-
-            Bevat `TaakSamenvatting`-objecten: alle velden die nodig zijn voor
-            een takenlijst of taakkaart. Type-specifieke uitvoeringsvelden
-            worden niet meegeleverd; die zijn beschikbaar via `GET /taken/{uuid}`.
           items:
             $ref: "#/components/schemas/TaakSamenvatting"
 
@@ -363,6 +375,11 @@ components:
             Open string — nieuwe waarden kunnen worden toegevoegd zonder
             bestaande clients te breken.
           example: upload
+        definitie:
+          $ref: "#/components/schemas/UitvoeringDefinitie"
+          description: |
+            Alleen aanwezig in de detailrespons (`GET /taken/{uuid}`), en alleen als de
+            provider een definitie voor lokale uitvoering meelevert.
 
     UitvoeringDefinitie:
       type: object
@@ -408,8 +425,7 @@ components:
     TaakSamenvatting:
       type: object
       description: |
-        Beknopte taakrepresentatie zoals in `ContextResultaat.taken` teruggegeven door
-        `POST /context/zoek` (wanneer `taken` in `include` staat of `include` ontbreekt).
+        Beknopte taakrepresentatie zoals teruggegeven door `GET /taken`.
         Bevat alle velden die nodig zijn voor een takenlijst of taakkaart,
         inclusief context en uitvoeringstype. Type-specifieke uitvoeringsvelden
         worden niet meegeleverd.
@@ -497,18 +513,8 @@ components:
     Taak:
       description: |
         Volledige taakrepresentatie zoals teruggegeven door `GET /taken/{uuid}`.
-        Breidt `TaakSamenvatting` uit met type-specifieke uitvoeringsvelden.
-      allOf:
-        - $ref: "#/components/schemas/TaakSamenvatting"
-        - type: object
-          properties:
-            uitvoering:
-              allOf:
-                - $ref: "#/components/schemas/UitvoeringBeknopt"
-                - type: object
-                  properties:
-                    definitie:
-                      $ref: "#/components/schemas/UitvoeringDefinitie"
+        Zelfde vorm als `TaakSamenvatting`; alleen hier is `uitvoering.definitie` gevuld.
+      $ref: "#/components/schemas/TaakSamenvatting"
 
   headers:
     API-Version:
@@ -529,8 +535,8 @@ components:
             code: ONGELDIGE_AANVRAAG
             title: Ongeldige aanvraag
             status: 400
-            detail: "Veld 'klantId' is verplicht."
-            instance: /context/zoek
+            detail: "Parameter 'context' moet een URN zijn."
+            instance: /taken
     Unauthorized:
       description: Authenticatie vereist
       content:
@@ -543,7 +549,22 @@ components:
             title: Authenticatie vereist
             status: 401
             detail: "Geen geldige toegangstoken meegestuurd."
-            instance: /context/zoek
+            instance: /taken
+    Forbidden:
+      description: |
+        Geldig token, maar de taak hoort niet bij de burger uit het token.
+        Zie `RecordNietGemachtigd` in `patterns/federated-auth`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "../../../schemas/fout/v0.0.1.json#/$defs/Fout"
+          example:
+            type: about:blank
+            code: NIET_GEMACHTIGD
+            title: Niet gemachtigd voor deze taak
+            status: 403
+            detail: "Deze taak hoort niet bij u."
+            instance: /taken/6fa870d4-a212-4f18-912c-3b9542a12999
     NotFound:
       description: Taak niet gevonden
       content:
@@ -559,10 +580,14 @@ components:
             instance: /taken/00000000-0000-4000-8000-000000000000
 
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-
-security:
-  - bearerAuth: []
+    FederatedOAuth2:
+      type: oauth2
+      description: |
+        Volgens `patterns/federated-auth`. Portalen (publieke clients) gebruiken
+        `authorizationCode` met PKCE; het token draagt de identiteit van de burger.
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.example.nl/oauth2/authorize
+          tokenUrl: https://auth.example.nl/oauth2/token
+          scopes:
+            taken:lezen: Taken van de ingelogde burger lezen.

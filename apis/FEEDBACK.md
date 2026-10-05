@@ -47,6 +47,19 @@ mock-gereedheid, inconsistenties, onnodige complexiteit en geprioriteerde fixes.
 
 ## taken/next (MijnTaken)
 
+**Omgezet naar het gedeelde skelet (5 oktober 2026), ✅ toegepast:**
+- `POST /context/zoek` met `klantId` en `include` vervangen door `GET /taken` met filters
+  `context` (URN), `status` en paginering, envelop `{count, next, previous, results}`.
+- Burger uit het token (`patterns/federated-auth`, scope `taken:lezen`); andermans taak geeft `403`.
+- Genest `allOf` in `Taak` opgeheven: `uitvoering.definitie` is een optioneel veld van
+  `UitvoeringBeknopt`. (Respect keurde een detailrespons met `definitie` anders af.)
+- Detailvoorbeeld toegevoegd dat overeenkomt met het eerste overzichtsvoorbeeld.
+- Gedrag getest met `aansluitprofielen/mijntaken/mijntaken-next.arazzo.yaml`, inclusief
+  "taken bij zaak" via de URN uit MijnZaken.
+
+Hieronder de oorspronkelijke feedback; de punten over `include`/`ContextResultaat`, `klantId`
+en het geneste `allOf` zijn hiermee opgelost.
+
 **Mock-gereedheid:** ✅ happy path werkt — `POST /context/zoek` + `GET /taken/{uuid}`
 geven met bearer + `Prefer: code=200` schone, samenhangende taken-data uit de
 schema-voorbeelden. Error-responses zijn garbage (rode draad #2).

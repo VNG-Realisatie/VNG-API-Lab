@@ -131,16 +131,9 @@ const defaultMockHeaders = {
 };
 
 const customRequestDefaults = {
-  method: "POST",
-  path: "/apis/rest/taken/next/context/zoek",
-  body: JSON.stringify(
-    {
-      klantId: "a8f3c1d2-7e44-4b1a-9c0f-123456789abc",
-      include: ["taken"],
-    },
-    null,
-    2,
-  ),
+  method: "GET",
+  path: "/apis/rest/taken/next/taken?status=open",
+  body: "",
 };
 
 type PageKey =
@@ -1665,21 +1658,19 @@ function ZaakDetailPage({
 
       <h1>{zaak.naam}</h1>
 
-      {zaak.openstaandeTaak && (
-        <div className="alert--warning zaak-alert" role="note">
+      {zaak.openstaandeTaken?.map((taak: any) => (
+        <div key={taak.uuid} className="alert--warning zaak-alert" role="note">
           <div>
-            <strong className="zaak-alert__title">{zaak.openstaandeTaak.titel}</strong>
-            {zaak.openstaandeTaak.deadline && (
-              <span className="zaak-alert__deadline">
-                ⚠ {formatDeadline(zaak.openstaandeTaak.deadline)}
-              </span>
+            <strong className="zaak-alert__title">{taak.titel?.nl}</strong>
+            {taak.deadline && (
+              <span className="zaak-alert__deadline">⚠ {formatDeadline(taak.deadline)}</span>
             )}
           </div>
-          <a className="button-primary" href={zaak.openstaandeTaak.actieUrl}>
-            Informatie geven
+          <a className="button-primary" href={taak.uitvoering?.canonicalUrl}>
+            Uitvoeren
           </a>
         </div>
-      )}
+      ))}
 
       {/* Status Timeline */}
       <section className="section">
@@ -2775,16 +2766,12 @@ export function App() {
   const loadTaken = useCallback(async () => {
     setTaken((s) => ({ ...s, status: "loading", error: undefined }));
     try {
-      const res = await trackedFetch(buildUrl(`/apis/rest/taken/next/context/zoek`), {
-        method: "POST",
+      // De burger komt uit het token; er gaat geen klantId mee.
+      const res = await trackedFetch(buildUrl(`/apis/rest/taken/next/taken?pageSize=100`), {
         headers: { ...defaultMockHeaders },
-        body: JSON.stringify({
-          klantId: "a8f3c1d2-7e44-4b1a-9c0f-123456789abc",
-          include: ["taken"],
-        }),
       });
       const data = await jsonOrThrow(res);
-      const mapped: Taak[] = (data.taken || []).map((t: any) => {
+      const mapped: Taak[] = (data.results || []).map((t: any) => {
         const isActionable = t.actieNodig !== false && t.status !== "ter-info";
         const isAi =
           t.uitvoering?.type === "formulier" || (t.labels && t.labels.includes("ingevuld"));
@@ -2965,7 +2952,28 @@ export function App() {
         if (!res.ok)
           throw new Error(`Verzoek mislukte (HTTP ${res.status} ${res.statusText || ""})`.trim());
         const data = await res.json();
-        setSelectedCase({ status: "ready", data });
+        // Openstaande taken bij deze zaak komen uit MijnTaken, gekoppeld via de URN van de zaak.
+        let openstaandeTaken: any[] = [];
+        if (data.urn) {
+          try {
+            const takenRes = await trackedFetch(
+              buildUrl(
+                `/apis/rest/taken/next/taken?status=open&context=${encodeURIComponent(data.urn)}`,
+              ),
+              { headers: { ...defaultMockHeaders } },
+            );
+            if (takenRes.ok) {
+              const taken = await takenRes.json();
+              // Filter ook zelf: de mock negeert queryparameters.
+              openstaandeTaken = (taken.results || []).filter(
+                (t: any) => t.context?.urn === data.urn && t.status === "open",
+              );
+            }
+          } catch {
+            // Taken zijn aanvullend; de zaak blijft zichtbaar als MijnTaken niet antwoordt.
+          }
+        }
+        setSelectedCase({ status: "ready", data: { ...data, openstaandeTaken } });
       } catch (err: any) {
         setSelectedCase({ status: "error", data: null, error: err?.message || "Onbekende fout." });
       }
@@ -3443,7 +3451,7 @@ export function App() {
                     type="text"
                     value={customPath}
                     onChange={(e) => setCustomPath(e.target.value)}
-                    placeholder="/apis/rest/taken/next/context/zoek"
+                    placeholder="/apis/rest/taken/next/taken?status=open"
                     aria-label="Pad of URL"
                   />
                 </div>

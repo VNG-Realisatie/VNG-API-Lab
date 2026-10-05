@@ -43,7 +43,7 @@ jobs:
           node-version: 20
 
       - name: Valideer Arazzo-profielen
-        run: npx -y @redocly/cli@2.57.0 lint aansluitprofielen/**/*.arazzo.yaml
+        run: npx -y @redocly/cli@2.57.0 lint aansluitprofielen/*/*.arazzo.yaml
 
       - name: Draai aansluitprofielen tegen referentieservers
         run: bash aansluitprofielen/test.sh

@@ -11,6 +11,12 @@ info:
     en geeft alleen zaken terug waarin die burger betrokkene is. Een zaak van iemand anders
     opvragen met een geldig eigen token geeft `403`.
 
+    ## Taken bij een zaak
+
+    Openstaande taken staan niet in de zaak zelf. Het portaal haalt ze op bij MijnTaken met
+    `GET /taken?context={urn}`, waarbij `urn` de URN van de zaak is. Zo is er één bron voor
+    een taak, en hoeft MijnZaken niets van taken te weten.
+
     ## Data, geen presentatie
 
     De API levert data; het portaal formatteert. Datums zijn ISO 8601, bestandsgroottes zijn
@@ -75,60 +81,70 @@ paths:
                 results:
                   - uuid: "550e8400-e29b-41d4-a716-446655440000"
                     zaaknummer: "11234899818"
+                    urn: "urn:nl:gemeenten:zaak:11234899818"
                     naam: "Aanvraag subsidie geluidisolatie"
                     status: "open"
                     huidigeStatus: "Onderzoek naar geluidsoverlast"
                     datumAanvraag: "2022-10-17"
                   - uuid: "9a2b3c4d-5e6f-4a8b-9c0d-1e2f3a4b5c6d"
                     zaaknummer: "22019283841"
+                    urn: "urn:nl:gemeenten:zaak:22019283841"
                     naam: "Wmo-melding"
                     status: "open"
                     huidigeStatus: "In behandeling"
                     datumAanvraag: "2024-09-29"
                   - uuid: "3b9542a1-a212-4f18-912c-6fa870d42999"
                     zaaknummer: "33019283842"
+                    urn: "urn:nl:gemeenten:zaak:33019283842"
                     naam: "Opzeggen parkeervergunning"
                     status: "open"
                     huidigeStatus: "Ontvangen"
                     datumAanvraag: "2023-12-05"
                   - uuid: "7c12fbf6-e8ad-4c33-8e9c-095be615a8ad"
                     zaaknummer: "44019283843"
+                    urn: "urn:nl:gemeenten:zaak:44019283843"
                     naam: "Aanvraag afkoop canon Keukenlaan 133"
                     status: "open"
                     huidigeStatus: "In behandeling"
                     datumAanvraag: "2023-12-05"
                   - uuid: "1a2b3c4d-5e6f-4a8b-9c0d-1e2f3a4b5c6d"
                     zaaknummer: "55019283844"
+                    urn: "urn:nl:gemeenten:zaak:55019283844"
                     naam: "Adres onderzoek"
                     status: "open"
                     huidigeStatus: "Onderzoek gestart"
                     datumAanvraag: "2023-12-05"
                   - uuid: "2f3e4d5c-6b7a-4d9e-8f1a-2b3c4d5e6f7a"
                     zaaknummer: "66019283845"
+                    urn: "urn:nl:gemeenten:zaak:66019283845"
                     naam: "Bezwaar tegen waardering onroerende zaken"
                     status: "open"
                     huidigeStatus: "Bezwaar ontvangen"
                     datumAanvraag: "2023-12-05"
                   - uuid: "8d9e0f1a-2b3c-4d5e-8f7a-8b9c0d1e2f3a"
                     zaaknummer: "77019283846"
+                    urn: "urn:nl:gemeenten:zaak:77019283846"
                     naam: "Aanvraag vakantieverhuur Dierenselaan 88"
                     status: "gesloten"
                     huidigeStatus: "Afgerond"
                     datumAanvraag: "2023-12-05"
                   - uuid: "9b0c1d2e-3f4a-4b6c-8d8e-9f0a1b2c3d4e"
                     zaaknummer: "88019283847"
+                    urn: "urn:nl:gemeenten:zaak:88019283847"
                     naam: "Aanvraag mantelzorg parkeervergunning"
                     status: "gesloten"
                     huidigeStatus: "Afgerond"
                     datumAanvraag: "2023-12-05"
                   - uuid: "0a1b2c3d-4e5f-4a7b-8c9d-0e1f2a3b4c5d"
                     zaaknummer: "99019283848"
+                    urn: "urn:nl:gemeenten:zaak:99019283848"
                     naam: "Aanvraag parkeervergunning"
                     status: "gesloten"
                     huidigeStatus: "Afgerond"
                     datumAanvraag: "2023-12-05"
                   - uuid: "1b2c3d4e-5f6a-4b8c-9d0e-1f2a3b4c5d6e"
                     zaaknummer: "10019283849"
+                    urn: "urn:nl:gemeenten:zaak:10019283849"
                     naam: "Verhuizing doorgeven"
                     status: "gesloten"
                     huidigeStatus: "Afgerond"
@@ -168,14 +184,11 @@ paths:
               example:
                 uuid: "550e8400-e29b-41d4-a716-446655440000"
                 zaaknummer: "11234899818"
+                urn: "urn:nl:gemeenten:zaak:11234899818"
                 naam: "Aanvraag subsidie geluidisolatie"
                 status: "open"
                 huidigeStatus: "Onderzoek naar geluidsoverlast"
                 datumAanvraag: "2022-10-17"
-                openstaandeTaak:
-                  titel: "Geef informatie voor uw aanvraag subsidie geluidsisolatie"
-                  deadline: "2026-10-07T23:59:59+02:00"
-                  actieUrl: "#zaken/informatie"
                 statushistorie:
                   - nummer: 1
                     titel: "Deelname aan geluidsonderzoek"
@@ -315,6 +328,7 @@ components:
       type: object
       required:
         - uuid
+        - urn
         - zaaknummer
         - naam
         - status
@@ -324,6 +338,13 @@ components:
           type: string
           format: uuid
           example: "550e8400-e29b-41d4-a716-446655440000"
+        urn:
+          type: string
+          pattern: "^urn:"
+          description: |
+            Organisatie-onafhankelijke identifier van de zaak. Andere Mijn-API's verwijzen
+            hiermee naar de zaak, bijvoorbeeld `context.urn` in MijnTaken.
+          example: "urn:nl:gemeenten:zaak:11234899818"
         zaaknummer:
           type: string
           example: "11234899818"
@@ -350,8 +371,6 @@ components:
             - documenten
             - contactmomenten
           properties:
-            openstaandeTaak:
-              $ref: "#/components/schemas/OpenstaandeTaak"
             statushistorie:
               type: array
               items:
@@ -364,23 +383,6 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/Contactmoment"
-
-    OpenstaandeTaak:
-      type: object
-      required:
-        - titel
-        - actieUrl
-      properties:
-        titel:
-          type: string
-        deadline:
-          type: string
-          format: date-time
-          description: Uiterlijk moment van afhandelen. Het portaal toont zelf "nog 2 dagen".
-        actieUrl:
-          type: string
-          format: uri-reference
-          description: Waar de burger de taak uitvoert (zie MijnTaken).
 
     StatusStap:
       type: object
