@@ -30,6 +30,13 @@ Domein-specifieke views (WOZ, Parkeren, Belasting) zijn **query-templates** bove
 - Dekt niet elke exotische zoekvraag — bewust geaccepteerd; gecontroleerd uitbreidbaar.
 - Full-text over de hele dataset blijft een aandachtspunt voor privacy/ABAC.
 
+## Bouwblok
+
+De cursor-paginering die dit besluit voorschrijft staat als herbruikbaar
+fragment in [`patterns/sync-feed`](../../patterns/sync-feed/next.yaml). Let op dat
+[`patterns/pagination`](../../patterns/pagination/0.0.1.yaml) nog `page`/`pageSize`
+gebruikt en dus niet aan dit besluit voldoet.
+
 ## Relatie tot de strategie
 
 Behoudt het generieke query-idee en de domein-templates, maar begrenst de grammatica i.p.v. een vrije Elastic-DSL te standaardiseren.

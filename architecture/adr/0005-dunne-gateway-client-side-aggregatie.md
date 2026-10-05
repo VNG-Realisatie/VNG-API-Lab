@@ -33,6 +33,12 @@ Géén business-logica, géén merge, géén persistente opslag in de gateway. P
 - De gateway concentreert nog steeds toegang (zij het zonder merge/opslag) → ABAC óók bij de bron, verwerkingslogging, meerdere gateways i.p.v. één nationale.
 - Pure-client blijft alleen haalbaar bij beperkte, CORS-coöperatieve bronnen.
 
+## Bouwblok
+
+[`patterns/federated-auth`](../../patterns/federated-auth/next.yaml) legt de
+OAuth2-bouwstenen vast waarmee een API rechtstreeks door een publieke client kan
+worden aangeroepen — de contractkant van dit besluit.
+
 ## Relatie tot de strategie
 
 Vult een laag in die de strategie niet behandelde (hoe komt het samen voor de burger), consistent met OIDC-NLGOV en ABAC.

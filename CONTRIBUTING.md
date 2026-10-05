@@ -25,9 +25,21 @@ Wijzigingsverzoeken starten bij voorkeur als issue. Concrete uitwerkingen en spe
 
 Nieuwe ideeën beginnen altijd als een **GitHub Issue**. Gebruik hiervoor het template "Businesswens". De Communitymanager beoordeelt of de wens aansluit bij de roadmap en of er al bestaande oplossingen zijn.
 
-### 2. Ontwerp (RFC)
+### 2. Ontwerp (ADR)
 
-Voor grote wijzigingen of nieuwe services maken we een Architectural Decision Record (ADR) of RFC in de `docs/rfcs/` folder. Dit wordt getoetst door de Tech Lead en de relevante PO.
+Voor grote wijzigingen of nieuwe services maken we een Architectural Decision Record (ADR) in [`architecture/adr/`](architecture/adr/README.md). Dit wordt getoetst door de Tech Lead en de relevante PO. Die map bevat ook het stramien voor een nieuwe ADR en een index van de bestaande besluiten.
+
+Een ADR legt vast *waarom* iets zo is besloten, inclusief de alternatieven die zijn afgevallen — juist dat laatste is wat je nodig hebt als de context over een jaar verandert.
+
+### 2a. Van besluit naar bouwblok
+
+Volgt uit een ADR een herbruikbaar stuk API-contract, dan landt dat als patroon in `patterns/`. Houd de verwijzing tweezijdig:
+
+- het patroon opent met `# Implementeert: ADR-XXXX (…)`;
+- de ADR krijgt een korte `## Bouwblok`-sectie die naar het patroon wijst;
+- de tabel in [`architecture/adr/README.md`](architecture/adr/README.md) is de autoritatieve afbeelding tussen beide.
+
+Een patroon zonder onderliggende ADR benoemt in één regel zijn herkomst, zodat "geen ADR" zichtbaar een keuze is en geen omissie.
 
 ### 3. Implementatie (Pull Request)
 

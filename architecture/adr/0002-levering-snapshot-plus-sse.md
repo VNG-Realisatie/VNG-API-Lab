@@ -37,6 +37,16 @@ Event sourcing verdwijnt als publiek contract; CloudEvents verhuist naar de **in
 - Een gemultiplexte multi-bron-stream heeft alleen *arrival order*, geen globale totale ordening.
 - Cold start vereist een snapshot; een pure tail mist historie.
 
+## Bouwblok
+
+[`patterns/sync-feed`](../../patterns/sync-feed/next.yaml) levert de snapshot- en
+cursorbouwstenen uit dit besluit als herbruikbare OpenAPI-fragmenten. Dat patroon
+adresseert ook het AVG-bezwaar uit dit besluit: het kent een expliciete
+`redact`-operatie, waarmee een log redigeerbaar wordt en gaten in de reeks
+benoemd worden in plaats van stil te blijven. Zie ook
+[ADR-0007](./0007-open-data-publicatie-pull-feed.md), dat voor open data de
+pull-feed als primaire route kiest en de stream optioneel maakt.
+
 ## Relatie tot de strategie
 
 Behoudt het idee van events/CloudEvents, maar verschuift het van "event sourcing als leescontract" naar "snapshot + SSE voor lezen, CloudEvents voor ingest".

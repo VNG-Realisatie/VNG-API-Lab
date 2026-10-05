@@ -1,3 +1,5 @@
+# Herkomst: praktijkpatroon (two-step upload met pre-signed URL); geen
+# onderliggend architectuurbesluit. Zie ../../architecture/adr/README.md
 title: File Upload
 description: |
   Beschrijft het API-gedrag, de foutafhandeling en de (HTTP) OpenAPI request/response contracten voor het two-step (pre-signed URL) uploadproces.

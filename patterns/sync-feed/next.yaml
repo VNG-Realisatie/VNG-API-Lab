@@ -1,0 +1,265 @@
+# Sync-Feed Pattern
+# Herbruikbare bouwstenen voor een feed waarop een afnemer betrouwbaar kan
+# synchroniseren: een snapshot voor de begintoestand en een cursor-feed voor
+# de wijzigingen daarna.
+#
+# Implementeert: ADR-0007 (open data: publicatie via pull-feed).
+# Levert daarnaast de cursor- en snapshotbouwstenen voor ADR-0002 (levering:
+# snapshot + tail) en de cursor-paginering die ADR-0003 voorschrijft.
+# Zie ../../architecture/adr/README.md
+
+title: Sync-feed (snapshot + cursor)
+description: |
+  Maakt een bron synchroniseerbaar: een afnemer haalt één keer de huidige stand
+  op en blijft daarna bij met een cursor, zonder ooit alles opnieuw te hoeven
+  ophalen en zonder wijzigingen te missen.
+
+  **Waarom niet gewoon paginering met een datumfilter.** Dat is de standaard
+  eerste poging, en hij lekt op twee manieren. `offset`/`page` schuift op zodra
+  er tijdens het pagineren records bijkomen — de afnemer slaat er dan stil een
+  over. En een tijdstempel is geen betrouwbare sleutel: klokken lopen uiteen,
+  meerdere records delen dezelfde milliseconde, en een wijziging die met
+  terugwerkende kracht bekend wordt krijgt een tijdstempel in het verleden,
+  waardoor een afnemer die al verder was hem nooit meer ziet. Beide fouten zijn
+  onzichtbaar voor de afnemer: het resultaat is een gat in zijn kopie, niet een
+  foutmelding. Zie [`patterns/pagination`](../pagination/0.0.1.yaml) voor
+  gewone lijst-endpoints; gebruik dít patroon zodra een afnemer een kopie
+  bijhoudt.
+
+  **De vier garanties.** Een implementatie van dit patroon belooft:
+
+  1. Elk record heeft een `sequenceNumber` dat de bron **bij vastlegging**
+     toekent en dat per feed monotoon oploopt.
+  2. Er wordt nooit een record ingevoegd vóór een `sequenceNumber` dat een
+     afnemer al heeft kunnen lezen. Wat later bekend wordt, krijgt een hoger
+     nummer.
+  3. De feed wordt altijd oplopend uitgeleverd. Een aflopende weergave is een
+     presentatiekwestie, geen synchronisatiemechanisme.
+  4. Gaten in de reeks komen alleen voor als expliciet `redact`-record, nooit
+     stilzwijgend.
+
+  **Cursors.** Een `cursor` is opaak: bewaar hem, geef hem mee, en interpreteer
+  hem niet. Hij duidt een positie in de **volledige** feed aan; filters worden
+  daarná toegepast, zodat een cursor geldig blijft als een afnemer zijn filter
+  wijzigt. `head` geeft het hoogste `sequenceNumber` op het moment van
+  antwoorden, zodat een afnemer zijn achterstand kan zien; `hasMore: false`
+  betekent "je bent bij".
+
+  **Koude start.** Een afnemer begint bij het snapshot-endpoint en neemt van de
+  **eerste** pagina de `feedCursor` over. Die wordt vastgesteld vóórdat de
+  snapshotrijen worden gelezen — doe je het erna, dan vallen wijzigingen die
+  tijdens het doorlopen binnenkomen tussen wal en schip.
+
+  **Deduplicatie.** Leg geen nieuw record vast wanneer de `contentHash` gelijk
+  is aan de vorige toestand van dezelfde resource. Zonder die afspraak levert
+  een herindexatie aan de bronkant een storm van no-op-records op, en haalt
+  iedere afnemer bij elke herverwerking de hele dataset opnieuw op.
+
+  **Verwijderen en redactie.** `delete` betekent: haal deze resource uit je
+  kopie, index, caches en afgeleide producten. `redact` betekent hetzelfde,
+  plus dat de bron eerdere inhoud uit de feedhistorie heeft verwijderd — nodig
+  wanneer gepubliceerde inhoud daar niet had mogen staan. Dat is het antwoord
+  op de AVG-bezwaren tegen een append-only log uit ADR-0002: een log die
+  redigeerbaar is, met de gaten expliciet benoemd in plaats van stil.
+  Houd records daarom compact: metadata en verwijzingen, geen bijlage-inhoud.
+
+  **Aggregatoren.** Een afnemer mag meerdere feeds samenvoegen en het resultaat
+  als *weer een feed volgens dit patroon* publiceren; `sequenceNumber` en
+  `cursor` gelden per feed, dus een aggregator kent zijn eigen reeks toe.
+  Vier verplichtingen houden de keten heel:
+
+  1. Geef de resource-identificatie van de bron onveranderd door; eigen
+     identifiers mogen ernaast staan, niet in de plaats.
+  2. Propageer `redact` — een intrekking die bij de eerste hop blijft hangen is
+     geen intrekking.
+  3. Publiceer géén `delete` wanneer een bovenliggende feed onbereikbaar is: de
+     resources zijn niet verdwenen, jij bent tijdelijk blind. Dit is de fout
+     die iedereen één keer maakt, en hij wist in één keer een hele bron.
+  4. Houd verrijking (afgeleide tekst, thumbnails, zoekindexen) in je eigen
+     API, niet in de feed.
+
+  **Hoe te gebruiken.** Dit patroon is domeinonafhankelijk en laat twee velden
+  aan de implementerende API over: `resource` (hoe een resource in dat domein
+  wordt geïdentificeerd) en `data` (de toestand zelf). Neem `FeedRecordBasis`
+  op met `allOf` en vul die twee aan:
+
+  ```yaml
+  FeedRecord:
+    allOf:
+      - $ref: "../../patterns/sync-feed/next.yaml#/schemas/FeedRecordBasis"
+      - type: object
+        required: [resource]
+        properties:
+          resource:
+            $ref: "#/components/schemas/ResourceSleutel"
+          data:
+            $ref: "#/components/schemas/MijnResource"
+  ```
+
+parameters:
+  cursor:
+    name: cursor
+    in: query
+    required: false
+    description: |
+      Opake positie-aanduiding uit een eerder antwoord. Laat weg om bij het
+      begin te starten. Behandel de waarde als ondeelbaar: het formaat is geen
+      contract en kan wijzigen.
+    schema:
+      type: string
+    example: "c2VxOjEyMzQ1"
+  limit:
+    name: limit
+    in: query
+    required: false
+    description: Maximum aantal records per pagina.
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 1000
+      default: 500
+
+schemas:
+  Operatie:
+    type: string
+    enum:
+      - upsert
+      - delete
+      - redact
+    description: |
+      - `upsert`: de volledige toestand van de resource (replace-semantiek).
+        Bewust geen onderscheid tussen aanmaken en wijzigen: voor een afnemer
+        is dat hetzelfde ("vervang wat ik had"), en veel bronsystemen kunnen
+        het verschil niet betrouwbaar leveren.
+      - `delete`: de resource bestaat niet meer of is niet langer beschikbaar.
+      - `redact`: als `delete`, plus: eerdere inhoud over deze resource is uit
+        de feedhistorie verwijderd.
+    example: upsert
+  FeedRecordBasis:
+    type: object
+    description: |
+      De domeinonafhankelijke velden van een feedrecord. Vul aan met `resource`
+      (identificatie in het eigen domein) en `data` (de toestand).
+    required:
+      - sequenceNumber
+      - op
+      - storedAt
+    properties:
+      sequenceNumber:
+        type: integer
+        minimum: 1
+        description: Door de bron toegekend bij vastlegging, per feed monotoon oplopend. De ordeningssleutel van de feed.
+        example: 42
+      op:
+        $ref: "#/schemas/Operatie"
+      storedAt:
+        type: string
+        format: date-time
+        description: Tijdstip waarop de bron deze wijziging in de feed heeft vastgelegd.
+        example: "2026-03-12T10:00:05Z"
+      gewijzigdOp:
+        type: string
+        format: date-time
+        description: |
+          Tijdstip van de wijziging in het bronsysteem, als dat wordt
+          bijgehouden. Informatief: niet monotoon, dus niet geschikt om op te
+          synchroniseren.
+        example: "2026-03-12T10:00:00Z"
+      contentHash:
+        type: string
+        pattern: "^sha256:[0-9a-f]{64}$"
+        description: |
+          Hash over de inhoud van `data`. Dient als deduplicatiesleutel (geen
+          nieuw record bij een gelijke hash) en als ordeningssleutel per
+          resource. Aanwezig bij `op: upsert`.
+        example: "sha256:9f2c1e0b7d4a5c6e8f0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60"
+      resourceUrl:
+        type: string
+        format: uri
+        description: Waar deze resource bij de bron te vinden is. Een adres, geen identiteit — sleutel op de resource-identificatie van het eigen domein.
+      geredigeerdeSequenceNumbers:
+        type: array
+        description: |
+          Alleen bij `op: redact`: de `sequenceNumber`s waarvan de inhoud uit de
+          feedhistorie is verwijderd. Een afnemer die die records eerder ophaalde,
+          verwijdert de gegevens ook uit zijn eigen kopie, caches en afgeleide
+          producten. Dit zijn de enige toegestane gaten in de reeks.
+        items:
+          type: integer
+        example: [17, 29]
+      herkomst:
+        type: object
+        description: |
+          Alleen door een aggregator gevuld: uit welke feed dit record komt.
+          Maakt de keten traceerbaar en laat zien of twee aggregatoren dezelfde
+          bron doorgeven. Een bron zelf laat dit weg.
+        required:
+          - feedUrl
+        properties:
+          feedUrl:
+            type: string
+            format: uri
+            description: De feed waaruit dit record is overgenomen.
+          sequenceNumber:
+            type: integer
+            description: Het `sequenceNumber` dat dit record in die feed had. Geldt alleen daar.
+  FeedPaginaBasis:
+    type: object
+    description: |
+      Het antwoord van een feed-endpoint. Vul aan met `records` (een array van
+      het eigen FeedRecord).
+    required:
+      - cursor
+      - head
+      - hasMore
+    properties:
+      cursor:
+        type: string
+        description: Positie ná het laatste record op deze pagina. Bewaren en meegeven bij de volgende aanroep.
+        example: "c2VxOjEyMzQ1"
+      head:
+        type: integer
+        description: Het hoogste `sequenceNumber` in de feed op het moment van antwoorden. Het verschil met het laatste record is de achterstand van de afnemer.
+        example: 120345
+      hasMore:
+        type: boolean
+        description: "`false` betekent: je bent bij. Bewaar de cursor en poll later opnieuw."
+        example: true
+      next:
+        type:
+          - string
+          - "null"
+        format: uri
+        description: "Volledige URL voor de volgende pagina, of `null` bij `hasMore: false`."
+  SnapshotPaginaBasis:
+    type: object
+    description: |
+      Het antwoord van een snapshot-endpoint: de huidige stand, als startpunt
+      voor een nieuwe afnemer. Vul aan met `records`.
+    required:
+      - feedCursor
+      - hasMore
+    properties:
+      feedCursor:
+        type: string
+        description: |
+          De cursor waarmee je na het doorlopen van dit snapshot verdergaat op
+          de feed. Neem de waarde van de **eerste** pagina: die is vastgesteld
+          vóórdat de snapshotrijen werden gelezen, zodat wijzigingen tijdens het
+          doorlopen niet worden gemist. Wordt op elke pagina meegegeven om
+          hervatten eenvoudig te houden.
+        example: "c2VxOjEyMDAwMA"
+      cursor:
+        type:
+          - string
+          - "null"
+        description: Positie voor de volgende snapshotpagina, of `null` als dit de laatste is.
+      hasMore:
+        type: boolean
+        example: true
+      next:
+        type:
+          - string
+          - "null"
+        format: uri
+        description: Volledige URL voor de volgende pagina.

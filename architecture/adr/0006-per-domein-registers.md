@@ -36,6 +36,12 @@ Registers zijn **per domein gesharded**, nooit één nationale alle-burgerdata-p
 - Per-domein trust-concentratie en SLA/aansprakelijkheid blijven governance-vragen.
 - Financiering/duurzaamheid van de gedeelde componenten (discovery, conformance) is een bestuurlijk besluit.
 
+## Bouwblok
+
+De verwijsindex uit dit besluit is uitgewerkt in
+[`apis/rest/discovery`](../../apis/rest/discovery/next.yaml): een manifest met per
+service `baseUrl` en `specUrl`, zonder inhoud.
+
 ## Relatie tot de strategie
 
 Voegt de governance-laag toe die de strategie niet behandelde, en houdt vast aan "data bij de bron".

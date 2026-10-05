@@ -35,6 +35,16 @@ Dit kan naar een **self-hosted** lees-API óf naar een **per-domein register** (
 - Kleine leveranciers moeten alsnog outbox + retry bouwen (minder dan een query-API, niet nul).
 - Vereist een PKI/ondertekening-afsprakenstelsel.
 
+## Bouwblok
+
+De CloudEvents-envelop staat in [`schemas/events`](../../schemas/events/v0.0.1.json),
+inclusief `sequence`/`sequencetype` en `dataref` (verwijzing in plaats van inline
+inhoud).
+
+**Reikwijdte:** dit besluit geldt voor gegevens met een autorisatievraag.
+Voor publicatie van open data is het afgebakend door
+[ADR-0007](./0007-open-data-publicatie-pull-feed.md).
+
 ## Relatie tot de strategie
 
 Lost het expliciet benoemde sync-/dataverlies-probleem op, en geeft CloudEvents een concrete, verdedigbare rol (ingest i.p.v. publiek leescontract).

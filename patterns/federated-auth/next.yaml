@@ -4,6 +4,10 @@
 # zonder aggregerende tussenlaag. Herkomst: architectuurdiscussie over
 # "client haalt data direct bij de bron op" (bijv. NL Portal frontend
 # rechtstreeks naar Open Klant, geen backend-per-portaal ertussen).
+#
+# Implementeert: ADR-0005 (dunne token/CORS-gateway + client-side aggregatie),
+# binnen de lijn van ADR-0001 (federatief, data bij de bron).
+# Zie ../../architecture/adr/README.md
 
 title: Federatief-ready authenticatie
 description: |

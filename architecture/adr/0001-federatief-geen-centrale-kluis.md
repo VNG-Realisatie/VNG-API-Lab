@@ -29,6 +29,12 @@ De strategie zweeft tussen twee modellen: "consumers halen CloudEvents op bij de
 - Federatie over heterogene bronnen vereist een discovery/verwijsindex en, voor legacy, adapters.
 - Een cache blijft een kopie — bewust begrensd (korte TTL, crypto-shred), geen replica-of-record.
 
+## Bouwblokken
+
+Dit besluit is richtinggevend en heeft geen eigen patroon; het werkt door in
+[ADR-0005](./0005-dunne-gateway-client-side-aggregatie.md) (lees-laag) en
+[ADR-0007](./0007-open-data-publicatie-pull-feed.md) (publicatie van open data).
+
 ## Relatie tot de strategie
 
 Maakt de impliciete "bij de bron"-lijn expliciet en kiest die boven het centrale leesmodel.
