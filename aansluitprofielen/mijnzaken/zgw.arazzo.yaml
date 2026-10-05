@@ -13,10 +13,13 @@ info:
       Zaak.uuid             -> uuid
       Zaak.identificatie    -> zaaknummer
       Zaak.omschrijving     -> naam
-      Zaak.einddatum        -> status (leeg = Open, gevuld = Gesloten)
+      Zaak.einddatum        -> status (leeg = open, gevuld = gesloten)
+      Zaak.status.statustype.omschrijving (via expand) -> huidigeStatus
       Zaak.registratiedatum -> datumAanvraag
       /statussen?zaak=      -> statushistorie (statustype via Catalogi API)
-      /zaakinformatieobjecten?zaak= -> documenten (metadata via Documenten API)
+      /zaakinformatieobjecten?zaak= -> documenten; formaat, bestandsgrootte en
+                               downloadUrl komen uit de Documenten API
+                               (formaat, bestandsomvang, inhoud)
 
     Let op: de ZGW API's autoriseren per applicatie, niet per burger. De twee
     autorisatieworkflows hieronder falen daarom tegen een standaard ZGW-implementatie.

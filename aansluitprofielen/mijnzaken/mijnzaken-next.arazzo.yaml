@@ -1,7 +1,7 @@
 arazzo: 1.0.1
 info:
   title: Aansluitprofiel MijnZaken op MijnZaken API (next)
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Stateful conformancetest voor de MijnZaken API (`apis/rest/zaken/next.yaml`).
 
@@ -26,34 +26,27 @@ workflows:
       samenvatting in het overzicht, anders ziet de burger twee verschillende dingen.
     inputs:
       type: object
-      required: [tokenA, klantIdA]
+      required: [tokenA]
       properties:
         tokenA:
           type: string
-          description: Toegangstoken namens testburger A.
-        klantIdA:
-          type: string
-          description: klantId van testburger A.
+          description: Toegangstoken namens testburger A. De bron leidt de burger hieruit af.
     steps:
       - stepId: zoek-zaken
-        operationId: $sourceDescriptions.mijnzaken.zoekZaken
+        operationId: $sourceDescriptions.mijnzaken.listZaken
         parameters:
           - in: header
             name: Authorization
             value: Bearer {$inputs.tokenA}
-        requestBody:
-          contentType: application/json
-          payload:
-            klantId: $inputs.klantIdA
         successCriteria:
           - condition: $statusCode == 200
-          - condition: $response.body#/0/uuid != null
+          - condition: $response.body#/results/0/uuid != null
         outputs:
-          uuid: $response.body#/0/uuid
-          zaaknummer: $response.body#/0/zaaknummer
-          naam: $response.body#/0/naam
-          status: $response.body#/0/status
-          datumAanvraag: $response.body#/0/datumAanvraag
+          uuid: $response.body#/results/0/uuid
+          zaaknummer: $response.body#/results/0/zaaknummer
+          naam: $response.body#/results/0/naam
+          status: $response.body#/results/0/status
+          datumAanvraag: $response.body#/results/0/datumAanvraag
 
       - stepId: haal-detail
         operationId: $sourceDescriptions.mijnzaken.retrieveZaak
@@ -76,11 +69,7 @@ workflows:
     summary: Zonder token geeft de API niets prijs
     steps:
       - stepId: zoek-zonder-token
-        operationId: $sourceDescriptions.mijnzaken.zoekZaken
-        requestBody:
-          contentType: application/json
-          payload:
-            klantId: onbekend
+        operationId: $sourceDescriptions.mijnzaken.listZaken
         successCriteria:
           - condition: $statusCode == 401
 
@@ -108,37 +97,28 @@ workflows:
   - workflowId: burger-a-haalt-zaak-van-burger-b
     summary: Burger A kan een zaak van burger B niet openen, ook niet met het uuid
     description: |
-      Autorisatie per burger, niet per applicatie. Een implementatie die één token voor alle
-      burgers gebruikt en alleen op klantId filtert, faalt hier.
-
-      Verwacht: 404. Niet 403, want dat verraadt dat de zaak bestaat (en 403 staat ook niet
-      in de spec).
+      Autorisatie per burger, niet per applicatie. De spec schrijft 403 voor
+      (`RecordNietGemachtigd` uit `patterns/federated-auth`).
     inputs:
       type: object
-      required: [tokenA, tokenB, klantIdB]
+      required: [tokenA, tokenB]
       properties:
         tokenA:
           type: string
         tokenB:
           type: string
-        klantIdB:
-          type: string
     steps:
       - stepId: b-zoekt-eigen-zaken
-        operationId: $sourceDescriptions.mijnzaken.zoekZaken
+        operationId: $sourceDescriptions.mijnzaken.listZaken
         parameters:
           - in: header
             name: Authorization
             value: Bearer {$inputs.tokenB}
-        requestBody:
-          contentType: application/json
-          payload:
-            klantId: $inputs.klantIdB
         successCriteria:
           - condition: $statusCode == 200
-          - condition: $response.body#/0/uuid != null
+          - condition: $response.body#/results/0/uuid != null
         outputs:
-          uuidVanB: $response.body#/0/uuid
+          uuidVanB: $response.body#/results/0/uuid
 
       - stepId: a-haalt-zaak-van-b
         operationId: $sourceDescriptions.mijnzaken.retrieveZaak
@@ -150,35 +130,45 @@ workflows:
             name: Authorization
             value: Bearer {$inputs.tokenA}
         successCriteria:
-          - condition: $statusCode == 404
+          - condition: $statusCode == 403
 
-  - workflowId: burger-a-zoekt-op-klantid-van-burger-b
-    summary: Burger A krijgt niets terug als hij op het klantId van burger B zoekt
+  - workflowId: overzicht-bevat-alleen-eigen-zaken
+    summary: Het overzicht van burger A bevat de zaak van burger B niet
     description: |
-      In de huidige spec staat `klantId` in de request body. Dan moet de implementatie zelf
-      afdwingen dat het klantId hoort bij de burger uit het token. Verwacht: een lege lijst.
+      Vervangt de oude test "zoek op klantId van B": er is geen klantId meer. Wel moet de
+      bron het overzicht zelf beperken tot de burger uit het token.
 
-      Beter is om `klantId` uit de spec te halen en de burger uit het token af te leiden;
-      dan vervalt deze test. Zie `aansluitprofielen/README.md`.
+      Beperking: Arazzo kan "de lijst bevat dit uuid niet" niet uitdrukken met een waarde
+      uit een eerdere stap. Deze check vergelijkt daarom alleen het eerste resultaat. Een
+      bron die op applicatieniveau autoriseert, valt hier wel door (de lijsten van A en B
+      zijn dan gelijk).
     inputs:
       type: object
-      required: [tokenA, klantIdB]
+      required: [tokenA, tokenB]
       properties:
         tokenA:
           type: string
-        klantIdB:
+        tokenB:
           type: string
     steps:
-      - stepId: a-zoekt-op-klantid-van-b
-        operationId: $sourceDescriptions.mijnzaken.zoekZaken
+      - stepId: b-zoekt-eigen-zaken
+        operationId: $sourceDescriptions.mijnzaken.listZaken
+        parameters:
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenB}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/uuid != null
+        outputs:
+          uuidVanB: $response.body#/results/0/uuid
+
+      - stepId: a-zoekt-eigen-zaken
+        operationId: $sourceDescriptions.mijnzaken.listZaken
         parameters:
           - in: header
             name: Authorization
             value: Bearer {$inputs.tokenA}
-        requestBody:
-          contentType: application/json
-          payload:
-            klantId: $inputs.klantIdB
         successCriteria:
           - condition: $statusCode == 200
-          - condition: $response.body#/length == 0
+          - condition: $response.body#/results/0/uuid != $steps.b-zoekt-eigen-zaken.outputs.uuidVanB

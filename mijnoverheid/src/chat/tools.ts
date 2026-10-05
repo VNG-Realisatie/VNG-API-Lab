@@ -155,13 +155,12 @@ export async function runTool(
       return { aantal: taken.length, taken };
     }
     case "get_zaken": {
-      const data = await postJson(apiCall, "/apis/rest/zaken/next/zaken/zoek", {
-        klantId: KLANT_ID,
-      });
-      const zaken = (Array.isArray(data) ? data : []).map((z: any) => ({
+      const data = await getJson(apiCall, "/apis/rest/zaken/next/zaken?pageSize=100");
+      const zaken = (Array.isArray(data?.results) ? data.results : []).map((z: any) => ({
         naam: z.naam,
         zaaknummer: z.zaaknummer || null,
         status: z.status || null,
+        huidigeStatus: z.huidigeStatus || null,
         datumAanvraag: z.datumAanvraag || z.datum || null,
         uuid: z.uuid || null,
       }));

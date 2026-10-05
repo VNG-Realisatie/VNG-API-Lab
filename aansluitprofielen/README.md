@@ -32,8 +32,9 @@ Respect controleert bij elke stap ook statuscode, content-type en schema tegen d
 | `overzicht-naar-detail` | Zaken zoeken, eerste zaak openen, gegevens moeten overeenkomen |
 | `zonder-token` | Zonder token geen data |
 | `onbekende-zaak` | Niet-bestaand uuid geeft 404 |
-| `burger-a-haalt-zaak-van-burger-b` | Token van A + uuid van B's zaak geeft 404 |
-| `burger-a-zoekt-op-klantid-van-burger-b` / `...-op-bsn-...` | Token van A + id van B geeft niets terug |
+| `burger-a-haalt-zaak-van-burger-b` | Token van A + uuid van B's zaak geeft 403 (next) of 403/404 (ZGW) |
+| `overzicht-bevat-alleen-eigen-zaken` (next) | Het overzicht van A bevat de zaak van B niet |
+| `burger-a-zoekt-op-bsn-van-burger-b` (ZGW) | Token van A + BSN van B geeft niets terug |
 
 ## Testdata
 
@@ -53,7 +54,7 @@ Eén workflow draaien kan met `-w overzicht-naar-detail`.
 
 | Profiel | Tegen | Resultaat |
 |---|---|---|
-| mijnzaken-next | Prism-mock (`pnpm mock`) | 1 van 5. Een statische mock kan geen 404 of autorisatie, en de voorbeelden in de spec spreken elkaar tegen (`datumAanvraag` 2024-10-17 in het overzicht, 2022-10-17 in het detail) |
+| mijnzaken-next | Prism-mock (`pnpm mock`) | 2 van 5. Een statische mock kan geen 404 of autorisatie per burger |
 | mijnzaken-next | [`referentie-server.js`](mijnzaken/referentie-server.js) | 5 van 5 |
 | zgw | [`zgw-referentie-server.js`](mijnzaken/zgw-referentie-server.js), `AUTORISATIE=applicatie` (zoals ZGW 1.x nu werkt) | 3 van 5. Beide autorisatieworkflows falen: een applicatietoken ziet alle zaken |
 | zgw | `zgw-referentie-server.js`, `AUTORISATIE=burger` | 5 van 5 |
@@ -67,11 +68,8 @@ kleine referentieserver.
    het token. Een aansluitprofiel op ZGW moet dus kiezen: de bron gaat burger-gebonden tokens
    afdwingen, of er zit een adapter tussen die dat doet. Zie
    `architecture/federated-auth-strategie.md`.
-2. **`klantId` hoort niet in de request body van MijnZaken.** Als de burger uit het token komt,
-   vervalt de hele klasse "zoek op andermans id". Dan is de workflow
-   `burger-a-zoekt-op-klantid-van-burger-b` overbodig.
-3. **403 staat niet in de MijnZaken-spec.** De profielen verwachten 404 voor andermans zaak
-   (verraadt niet dat de zaak bestaat).
+2. **MijnZaken next is hierop aangepast.** Geen `klantId` meer: de burger komt uit het token,
+   andermans zaak geeft `403` volgens `patterns/federated-auth`.
 
 ## Lokaal draaien
 

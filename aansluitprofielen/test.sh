@@ -14,8 +14,7 @@ sleep 1
 
 $RESPECT aansluitprofielen/mijnzaken/mijnzaken-next.arazzo.yaml \
   --server mijnzaken=http://127.0.0.1:4020 \
-  --input tokenA=token-a --input klantIdA=klant-a \
-  --input tokenB=token-b --input klantIdB=klant-b
+  --input tokenA=token-a --input tokenB=token-b
 
 $RESPECT aansluitprofielen/mijnzaken/zgw.arazzo.yaml \
   --server zaken=http://127.0.0.1:4021 \
