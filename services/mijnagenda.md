@@ -1,5 +1,9 @@
 # Service beschrijving — MijnAgenda
 
+| Eigenaar ontwerp | Status `next` in dit lab |
+| --- | --- |
+| Werkgroep Ontwerp MijnAgenda Service | Werkgroep-ontwerp. Het lab volgt; wijzigingen lopen via de werkgroep. |
+
 Dit document beschrijft de functionele en technische specificaties van de **MijnAgenda** service:
 het tonen van agenda-afspraken van een inwoner of ondernemer binnen een MijnOmgeving. Het dient
 als servicebeschrijving in lijn met de VNG MijnServices standaarden.

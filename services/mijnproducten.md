@@ -1,5 +1,9 @@
 # Service beschrijving — MijnProducten
 
+| Eigenaar ontwerp | Status `next` in dit lab |
+| --- | --- |
+| Nog vast te stellen | Lab-voorstel, uitgewerkt door het VNG API lab. |
+
 Dit document beschrijft de functionele en technische specificaties van de **MijnProducten** service.
 Het dient als servicebeschrijving voor implementatie en integratie van producten binnen een
 MijnOmgeving, in lijn met de VNG MijnServices standaarden.
