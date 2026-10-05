@@ -1,0 +1,230 @@
+arazzo: 1.0.1
+info:
+  title: Aansluitprofiel MijnZaken op ZGW (Zaken API 1.5)
+  version: 0.1.0
+  description: |
+    Dezelfde burgerflows als `mijnzaken-next.arazzo.yaml`, maar direct op een zaaksysteem
+    dat de ZGW API's aanbiedt. Dit profiel legt vast welke ZGW-calls een MijnOmgeving doet,
+    in welke volgorde, en welke velden op welk MijnZaken-veld landen.
+
+    Bron: Zaken API zoals gepubliceerd in gemma-zaken (`current_version`, 1.5.1).
+
+    Veldmapping (ZGW naar MijnZaken):
+      Zaak.uuid             -> uuid
+      Zaak.identificatie    -> zaaknummer
+      Zaak.omschrijving     -> naam
+      Zaak.einddatum        -> status (leeg = Open, gevuld = Gesloten)
+      Zaak.registratiedatum -> datumAanvraag
+      /statussen?zaak=      -> statushistorie (statustype via Catalogi API)
+      /zaakinformatieobjecten?zaak= -> documenten (metadata via Documenten API)
+
+    Let op: de ZGW API's autoriseren per applicatie, niet per burger. De twee
+    autorisatieworkflows hieronder falen daarom tegen een standaard ZGW-implementatie.
+    Dat is geen fout in de test maar precies het gat dat het aansluitprofiel zichtbaar
+    maakt: de bron, of een adapter ervoor, moet burger-gebonden tokens accepteren.
+
+sourceDescriptions:
+  - name: zaken
+    url: https://raw.githubusercontent.com/VNG-Realisatie/gemma-zaken/master/api-specificatie/zrc/current_version/openapi.yaml
+    type: openapi
+
+components:
+  parameters:
+    acceptCrs:
+      in: header
+      name: Accept-Crs
+      value: EPSG:4326
+    contentCrs:
+      in: header
+      name: Content-Crs
+      value: EPSG:4326
+
+workflows:
+  - workflowId: overzicht-naar-detail
+    summary: Burger opent zijn zakenoverzicht en klikt een zaak open
+    inputs:
+      type: object
+      required: [tokenA, bsnA]
+      properties:
+        tokenA:
+          type: string
+          description: Toegangstoken. In ZGW 1.x is dit een applicatietoken (JWT-Claims).
+        bsnA:
+          type: string
+          description: BSN van testburger A.
+    steps:
+      - stepId: zoek-zaken
+        description: Overzicht. Eén call met expand, zodat statustype niet per zaak apart hoeft.
+        operationId: $sourceDescriptions.zaken.zaak_list
+        parameters:
+          - in: query
+            name: rol__betrokkeneIdentificatie__natuurlijkPersoon__inpBsn
+            value: $inputs.bsnA
+          - in: query
+            name: expand
+            value: status.statustype
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/uuid != null
+        outputs:
+          uuid: $response.body#/results/0/uuid
+          url: $response.body#/results/0/url
+          zaaknummer: $response.body#/results/0/identificatie
+          naam: $response.body#/results/0/omschrijving
+          datumAanvraag: $response.body#/results/0/registratiedatum
+
+      - stepId: haal-detail
+        operationId: $sourceDescriptions.zaken.zaak_retrieve
+        parameters:
+          - in: path
+            name: uuid
+            value: $steps.zoek-zaken.outputs.uuid
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/uuid == $steps.zoek-zaken.outputs.uuid
+          - condition: $response.body#/identificatie == $steps.zoek-zaken.outputs.zaaknummer
+          - condition: $response.body#/omschrijving == $steps.zoek-zaken.outputs.naam
+          - condition: $response.body#/registratiedatum == $steps.zoek-zaken.outputs.datumAanvraag
+
+      - stepId: haal-statushistorie
+        operationId: $sourceDescriptions.zaken.status_list
+        parameters:
+          - in: query
+            name: zaak
+            value: $steps.zoek-zaken.outputs.url
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 200
+
+      - stepId: haal-documenten
+        operationId: $sourceDescriptions.zaken.zaakinformatieobject_list
+        parameters:
+          - in: query
+            name: zaak
+            value: $steps.zoek-zaken.outputs.url
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 200
+
+  - workflowId: zonder-token
+    summary: Zonder token geeft de API niets prijs
+    steps:
+      - stepId: zoek-zonder-token
+        operationId: $sourceDescriptions.zaken.zaak_list
+        parameters:
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+        successCriteria:
+          - condition: $statusCode == 401 || $statusCode == 403
+
+  - workflowId: onbekende-zaak
+    summary: Een zaak die niet bestaat geeft 404
+    inputs:
+      type: object
+      required: [tokenA]
+      properties:
+        tokenA:
+          type: string
+    steps:
+      - stepId: haal-onbekende-zaak
+        operationId: $sourceDescriptions.zaken.zaak_retrieve
+        parameters:
+          - in: path
+            name: uuid
+            value: 00000000-0000-4000-8000-000000000000
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+        successCriteria:
+          - condition: $statusCode == 404
+
+  - workflowId: burger-a-haalt-zaak-van-burger-b
+    summary: Met het token van burger A is een zaak van burger B niet op te halen
+    description: |
+      Faalt tegen standaard ZGW 1.x: een applicatietoken ziet alle zaken. Slaagt pas als de
+      bron (of een adapter) tokens per burger uitgeeft en afdwingt.
+    inputs:
+      type: object
+      required: [tokenA, tokenB, bsnB]
+      properties:
+        tokenA:
+          type: string
+        tokenB:
+          type: string
+        bsnB:
+          type: string
+    steps:
+      - stepId: b-zoekt-eigen-zaken
+        operationId: $sourceDescriptions.zaken.zaak_list
+        parameters:
+          - in: query
+            name: rol__betrokkeneIdentificatie__natuurlijkPersoon__inpBsn
+            value: $inputs.bsnB
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenB}
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/uuid != null
+        outputs:
+          uuidVanB: $response.body#/results/0/uuid
+
+      - stepId: a-haalt-zaak-van-b
+        operationId: $sourceDescriptions.zaken.zaak_retrieve
+        parameters:
+          - in: path
+            name: uuid
+            value: $steps.b-zoekt-eigen-zaken.outputs.uuidVanB
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+        successCriteria:
+          - condition: $statusCode == 403 || $statusCode == 404
+
+  - workflowId: burger-a-zoekt-op-bsn-van-burger-b
+    summary: Met het token van burger A levert zoeken op het BSN van burger B niets op
+    description: |
+      In ZGW is het BSN een queryfilter, geen geverifieerde claim. Faalt daarom tegen
+      standaard ZGW 1.x.
+    inputs:
+      type: object
+      required: [tokenA, bsnB]
+      properties:
+        tokenA:
+          type: string
+        bsnB:
+          type: string
+    steps:
+      - stepId: a-zoekt-op-bsn-van-b
+        operationId: $sourceDescriptions.zaken.zaak_list
+        parameters:
+          - in: query
+            name: rol__betrokkeneIdentificatie__natuurlijkPersoon__inpBsn
+            value: $inputs.bsnB
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+        successCriteria:
+          - condition: $statusCode == 403 || $response.body#/count == 0

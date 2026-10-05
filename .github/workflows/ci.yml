@@ -34,6 +34,20 @@ jobs:
       - name: Build portal and MijnOverheid demo
         run: npx pnpm@10.26.0 build
 
+  aansluitprofielen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Valideer Arazzo-profielen
+        run: npx -y @redocly/cli@2.57.0 lint aansluitprofielen/**/*.arazzo.yaml
+
+      - name: Draai aansluitprofielen tegen referentieservers
+        run: bash aansluitprofielen/test.sh
+
   validate-asyncapi:
     runs-on: ubuntu-latest
     steps:
