@@ -8,6 +8,8 @@
   },
   "scripts": {
     "lint": "spectral lint --fail-severity=error \"apis/**/*.yaml\" \"apis/**/*.yml\" \"patterns/**/*.yaml\" \"patterns/**/*.yml\"",
+    "lint:aansluitprofielen": "npx -y @redocly/cli@2.57.0 lint aansluitprofielen/*/*.arazzo.yaml",
+    "test:aansluitprofielen": "bash aansluitprofielen/test.sh",
     "convert-xmi": "node scripts/xmi-to-json-schema.js",
     "prep-docs": "pnpm convert-xmi && node scripts/generate-portal-data.js && pnpm respec",
     "respec": "node scripts/generate-respec.js",
