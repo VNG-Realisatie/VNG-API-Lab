@@ -38,6 +38,16 @@ Dit project is nog in ontwikkeling, de API's en schema's vertegenwoordigen nog g
 - `schemas/`: Gedeelde JSON-schemas voor data-objecten, onafhankelijk versied.
   - `[object]/[semver].json`: Expliciete versiebeheer (bijv. `adres/0.0.1.json`).
 - `patterns/`: Herbruikbare API-fragmenten (bijv. paginering).
+
+### Twee soorten API's
+
+| Soort | Herkenbaar aan | Wat het is | Mag het lab wijzigen? |
+|---|---|---|---|
+| **Mijn-API's** | Titel `Mijn...` (MijnZaken, MijnTaken, MijnProducten, MijnAgenda, MijnGesprekken); map `apis/rest/{zaken,taken,...}` | Nieuwe generatie: het contract tussen een MijnOmgeving en een bron. Hier mogen we ambitieus zijn. | Ja, in `next`. Benoemde versies nooit. Een werkgroep-ontwerp (zie `services/*.md`) alleen in overleg. |
+| **Bestaande registers** | Map met pakketnaam ervoor (`zgw-`, `openvtb-`, `openproduct-`, `openklant-`, `openplan-`) | De huidige situatie: API's van bestaande componenten, as-is geïmporteerd. | Nee. Nieuwe versie van de bron = nieuw bestand. |
+
+Een aansluitprofiel (`aansluitprofielen/`) verbindt de twee: het laat zien hoe een bestaand register
+een Mijn-API invult, en wat er dan nog ontbreekt.
 - `docs/`: Governance, Design Principes en Architectural Decision Records (ADRs).
   - `respec/`: Automatisch gegenereerde ReSpec HTML specificaties en PDF versies hiervan.
 - `mijnoverheid/`: MijnOverheid demo-app (React, NLDS-ARK).

@@ -21,6 +21,8 @@ herontwerp van een API, maar een afgebakende selectie uit een bestaande standaar
 ## Links
 
 - ZGW API's 1.6 (basis): [GEMMA Zaakgericht werken — standaard](https://vng-realisatie.github.io/gemma-zaken/standaard/)
+- Zaken API 1.6.0 in dit lab (interactief): [Scalar](/?url=/docs/bundled/apis_rest_zgw-zaken_v1.6.0.yaml),
+  bron: [apis/rest/zgw-zaken/v1.6.0.yaml](/?file=apis/rest/zgw-zaken/v1.6.0.yaml)
 - Gedeelde foutafhandeling (RFC 7807): [schemas/fout/v0.0.1.json](/?file=schemas/fout/v0.0.1.json)
 
 ## Inleiding

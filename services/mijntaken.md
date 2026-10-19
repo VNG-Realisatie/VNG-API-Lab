@@ -21,12 +21,12 @@ Open VTB ontsluit Verzoeken, Taken en Berichten als aparte API's. Binnen MijnTak
 Taken-API relevant; Verzoeken en Berichten horen bij aanpalende processen maar staan hier ter referentie
 in het lab.
 
-- Taken API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openvtb-taken_v0.1.0.yaml)
-- OpenAPI bron: [apis/rest/openvtb-taken/v0.1.0.yaml](/?file=apis/rest/openvtb-taken/v0.1.0.yaml)
-- Verzoeken API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openvtb-verzoeken_v0.1.0.yaml)
-- OpenAPI bron: [apis/rest/openvtb-verzoeken/v0.1.0.yaml](/?file=apis/rest/openvtb-verzoeken/v0.1.0.yaml)
-- Berichten API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openvtb-berichten_v0.1.0.yaml)
-- OpenAPI bron: [apis/rest/openvtb-berichten/v0.1.0.yaml](/?file=apis/rest/openvtb-berichten/v0.1.0.yaml)
+- Taken API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openvtb-taken_v0.2.0.yaml)
+- OpenAPI bron: [apis/rest/openvtb-taken/v0.2.0.yaml](/?file=apis/rest/openvtb-taken/v0.2.0.yaml)
+- Verzoeken API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openvtb-verzoeken_v0.2.0.yaml)
+- OpenAPI bron: [apis/rest/openvtb-verzoeken/v0.2.0.yaml](/?file=apis/rest/openvtb-verzoeken/v0.2.0.yaml)
+- Berichten API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openvtb-berichten_v0.2.0.yaml)
+- OpenAPI bron: [apis/rest/openvtb-berichten/v0.2.0.yaml](/?file=apis/rest/openvtb-berichten/v0.2.0.yaml)
 - Bron: [maykinmedia/open-vtb](https://github.com/maykinmedia/open-vtb)
 
 **Overig:**
@@ -130,9 +130,9 @@ De presentatie en interactie in de MijnOmgeving volgt bij voorkeur de NL Design 
 - OAuth 2.0 / Bearer tokens (deployment-specifiek; contract beschrijft het functionele model)
 - OpenAPI specificatie: zie [apis/rest/taken/next.yaml](/?file=apis/rest/taken/next.yaml)
 - Foutafhandeling: RFC 7807 via [schemas/fout/v0.0.1.json](/?file=schemas/fout/v0.0.1.json)
-- Open VTB (Maykin): [Taken](/?url=/docs/bundled/apis_rest_openvtb-taken_v0.1.0.yaml),
-  [Verzoeken](/?url=/docs/bundled/apis_rest_openvtb-verzoeken_v0.1.0.yaml),
-  [Berichten](/?url=/docs/bundled/apis_rest_openvtb-berichten_v0.1.0.yaml) — referentie-implementaties
+- Open VTB (Maykin): [Taken](/?url=/docs/bundled/apis_rest_openvtb-taken_v0.2.0.yaml),
+  [Verzoeken](/?url=/docs/bundled/apis_rest_openvtb-verzoeken_v0.2.0.yaml),
+  [Berichten](/?url=/docs/bundled/apis_rest_openvtb-berichten_v0.2.0.yaml) — referentie-implementaties
   in dit lab
 
 ## API’s & patronen
@@ -159,6 +159,20 @@ OpenVTB, een eigen takenregister of een adapter bovenop een procesapplicatie geb
 een OpenVTB-gebaseerde implementatie aantonen dat de vereiste velden en gedragingen beschikbaar
 zijn: taakstatus, verloopdatum, contextkoppeling, uitvoeringsinformatie, detailopvraag en een
 stabiele relatie met de verwerkende applicatie.
+
+### MijnTaken op een Open VTB-bron
+
+Het aansluitprofiel [`aansluitprofielen/mijntaken/openvtb.arazzo.yaml`](/?file=aansluitprofielen/mijntaken/openvtb.arazzo.yaml)
+legt vast hoe een MijnOmgeving taken rechtstreeks uit Open VTB 0.2 haalt (`GET /externetaken`
+met `isToegewezenAan` en `isGerelateerdAan`) en hoe de velden op MijnTaken landen. Wat het
+profiel blootlegt:
+
+- Open VTB autoriseert per applicatie. De burger is een queryfilter met BSN in de URL, geen
+  claim uit het token. Een adapter (of de bron zelf) moet burger-gebonden tokens afdwingen.
+- Alleen een `urltaak` heeft een link om de taak uit te voeren (`uitvraagLink`). Voor een
+  `betaaltaak` en een `formuliertaak` moet de adapter `uitvoering.canonicalUrl` zelf maken.
+- Statussen verschillen: `uitgevoerd` en `verwerkt` worden `afgerond`, `niet_uitgevoerd` en
+  `afgebroken` worden `geannuleerd`.
 
 ### Twee-staps flow (lijst → detail)
 
