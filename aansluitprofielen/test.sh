@@ -11,6 +11,8 @@ AUTORISATIE=burger PORT=4021 node aansluitprofielen/mijnzaken/zgw-referentie-ser
 PIDS="$PIDS $!"
 AUTORISATIE=burger PORT=4022 node aansluitprofielen/mijntaken/openvtb-referentie-server.js &
 PIDS="$PIDS $!"
+AUTORISATIE=burger PORT=4023 node aansluitprofielen/mijntaken/objecten-referentie-server.js &
+PIDS="$PIDS $!"
 trap 'kill $PIDS' EXIT
 sleep 1
 
@@ -36,3 +38,11 @@ $RESPECT aansluitprofielen/mijntaken/openvtb.arazzo.yaml \
   --input tokenA=token-a --input burgerA=urn:nld:brp:bsn:111222333 \
   --input zaakA=urn:nld:gemeentevoorbeeld:zaak:zaaknummer:ZAAK-2024-0001 \
   --input tokenB=token-b --input burgerB=urn:nld:brp:bsn:999993653
+
+$RESPECT aansluitprofielen/mijntaken/objecten.arazzo.yaml \
+  --server objecten=http://127.0.0.1:4023 \
+  --severity '{"SCHEMA_CHECK":"warn","STATUS_CODE_CHECK":"warn"}' \
+  --input taakType=http://objecttypen.example.nl/api/v2/objecttypes/7a2b1c3d-0000-4000-8000-00000000aaaa \
+  --input tokenA=token-a --input bsnA=111222333 \
+  --input zaakA=550e8400-e29b-41d4-a716-446655440000 \
+  --input tokenB=token-b --input bsnB=999993653

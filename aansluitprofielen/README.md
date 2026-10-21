@@ -14,6 +14,7 @@ Per MijnService zijn er meerdere profielen: één per soort bron. Ze testen deze
 | MijnZaken | [`mijnzaken/zgw.arazzo.yaml`](mijnzaken/zgw.arazzo.yaml) | Zaaksysteem met de ZGW Zaken API (1.5.1, gemma-zaken `current_version`) |
 | MijnTaken | [`mijntaken/mijntaken-next.arazzo.yaml`](mijntaken/mijntaken-next.arazzo.yaml) | Provider die de MijnTaken API (`apis/rest/taken/next.yaml`) aanbiedt |
 | MijnTaken | [`mijntaken/openvtb.arazzo.yaml`](mijntaken/openvtb.arazzo.yaml) | Takenregister met de Open VTB Taken API (0.2.0, `apis/rest/openvtb-taken/v0.2.0.yaml`) |
+| MijnTaken | [`mijntaken/objecten.arazzo.yaml`](mijntaken/objecten.arazzo.yaml) | Objecten API (Open Object 2.8, `apis/rest/openobject-objecten/v2.8.0.yaml`) met taken als objecten, zoals Open Inwoner en GZAC ze gebruiken |
 
 ## Waarom niet alleen Schemathesis
 
@@ -70,7 +71,10 @@ Eén workflow draaien kan met `-w overzicht-naar-detail`.
 | openvtb | [`openvtb-referentie-server.js`](mijntaken/openvtb-referentie-server.js), `AUTORISATIE=applicatie` (zoals Open VTB 0.2 nu werkt) | 4 van 6. Beide autorisatieworkflows falen: een applicatietoken ziet alle taken |
 | openvtb | `openvtb-referentie-server.js`, `AUTORISATIE=burger` | 6 van 6 |
 
-De openvtb-rijen zijn van 19 oktober 2026.
+| objecten | [`objecten-referentie-server.js`](mijntaken/objecten-referentie-server.js), `AUTORISATIE=applicatie` (zoals Open Object nu werkt) | 4 van 6. Beide autorisatieworkflows falen: een applicatietoken ziet alle objecten van het objecttype |
+| objecten | `objecten-referentie-server.js`, `AUTORISATIE=burger` | 6 van 6 |
+
+De openvtb-rijen zijn van 19 oktober 2026, de objecten-rijen van 21 oktober 2026.
 
 De ZGW-spec zelf is niet met Prism te mocken (Prism geeft een 500 op `/zaken`), vandaar de
 kleine referentieserver.
@@ -91,7 +95,13 @@ kleine referentieserver.
    JSON Schema-validators (Ajv: "must have const or enum"). Het profiel zet schema- en
    statuscodechecks daarom op waarschuwing; het gedrag wordt wel hard getest. Beide punten
    zijn feedback voor Maykin, de import in `apis/rest/openvtb-taken/` blijft as-is.
-5. **MijnZaken next is hierop aangepast.** Geen `klantId` meer: de burger komt uit het token,
+5. **De Objecten API heeft hetzelfde gat, en Open Inwoner vult het in het portaal.** Het BSN
+   is een filter op de inhoud van het object. Open Inwoner (commit `5f4b021`) haalt alle
+   taakobjecten op en filtert daarna zelf op BSN; het portaal ziet dus taken van andere
+   burgers, en alleen de eerste pagina. Ook de Objecten-spec documenteert geen `403`/`404` en
+   is niet valide voor Ajv (`nullable` zonder `type`); het profiel draait daarom met dezelfde
+   waarschuwingsinstelling als Open VTB.
+6. **MijnZaken next is hierop aangepast.** Geen `klantId` meer: de burger komt uit het token,
    andermans zaak geeft `403` volgens `patterns/federated-auth`.
 
 ## Lokaal draaien

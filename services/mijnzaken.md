@@ -23,6 +23,12 @@ herontwerp van een API, maar een afgebakende selectie uit een bestaande standaar
 - ZGW API's 1.6 (basis): [GEMMA Zaakgericht werken — standaard](https://vng-realisatie.github.io/gemma-zaken/standaard/)
 - Zaken API 1.6.0 in dit lab (interactief): [Scalar](/?url=/docs/bundled/apis_rest_zgw-zaken_v1.6.0.yaml),
   bron: [apis/rest/zgw-zaken/v1.6.0.yaml](/?file=apis/rest/zgw-zaken/v1.6.0.yaml)
+- Documenten API 1.6.0 (documenten bij een zaak): [Scalar](/?url=/docs/bundled/apis_rest_zgw-documenten_v1.6.0.yaml),
+  bron: [apis/rest/zgw-documenten/v1.6.0.yaml](/?file=apis/rest/zgw-documenten/v1.6.0.yaml)
+- Catalogi API 1.3.2 (zaaktypen en statusnamen): [Scalar](/?url=/docs/bundled/apis_rest_zgw-catalogi_v1.3.2.yaml),
+  bron: [apis/rest/zgw-catalogi/v1.3.2.yaml](/?file=apis/rest/zgw-catalogi/v1.3.2.yaml)
+- Notificaties API 1.0.0 (wijzigingen in zaken als event): [Scalar](/?url=/docs/bundled/apis_rest_zgw-notificaties_v1.0.0.yaml),
+  bron: [apis/rest/zgw-notificaties/v1.0.0.yaml](/?file=apis/rest/zgw-notificaties/v1.0.0.yaml)
 - Gedeelde foutafhandeling (RFC 7807): [schemas/fout/v0.0.1.json](/?file=schemas/fout/v0.0.1.json)
 
 ## Inleiding

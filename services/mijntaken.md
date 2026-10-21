@@ -29,6 +29,14 @@ in het lab.
 - OpenAPI bron: [apis/rest/openvtb-berichten/v0.2.0.yaml](/?file=apis/rest/openvtb-berichten/v0.2.0.yaml)
 - Bron: [maykinmedia/open-vtb](https://github.com/maykinmedia/open-vtb)
 
+**Huidige situatie — taken als objecten (Open Object):**
+
+Open Inwoner en de portaaltaak van GZAC/Valtimo slaan taken op als objecten van een objecttype
+"taak" in de Objecten API.
+
+- Objecten API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openobject-objecten_v2.8.0.yaml)
+- OpenAPI bron: [apis/rest/openobject-objecten/v2.8.0.yaml](/?file=apis/rest/openobject-objecten/v2.8.0.yaml)
+
 **Overig:**
 
 - Gedeelde foutafhandeling (RFC 7807): [schemas/fout/v0.0.1.json](/?file=schemas/fout/v0.0.1.json)
@@ -173,6 +181,20 @@ profiel blootlegt:
   `betaaltaak` en een `formuliertaak` moet de adapter `uitvoering.canonicalUrl` zelf maken.
 - Statussen verschillen: `uitgevoerd` en `verwerkt` worden `afgerond`, `niet_uitgevoerd` en
   `afgebroken` worden `geannuleerd`.
+
+### MijnTaken op een Objecten API-bron
+
+Het aansluitprofiel [`aansluitprofielen/mijntaken/objecten.arazzo.yaml`](/?file=aansluitprofielen/mijntaken/objecten.arazzo.yaml)
+legt vast hoe een MijnOmgeving taakobjecten leest (`GET /objects?type=...&data_attr=...`) en hoe
+de velden op MijnTaken landen. Wat het blootlegt:
+
+- Ook hier autoriseert de bron per applicatie en per objecttype. De burger is een filter op de
+  inhoud van het object, met het BSN in de URL.
+- De koppeling naar de zaak is een uuid, geen URN. Een adapter moet de URN uit MijnZaken maken.
+- Open Inwoner (commit `5f4b021`, met `objects-api-client-django` 0.5.0) haalt alle objecten
+  van het taak-objecttype op en filtert pas daarna op BSN, in het portaal. Het portaal krijgt
+  dus taken van andere burgers binnen, en leest alleen de eerste pagina. Het profiel filtert
+  daarom in de bron, met `data_attr`.
 
 ### Twee-staps flow (lijst → detail)
 

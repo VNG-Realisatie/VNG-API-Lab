@@ -21,10 +21,10 @@ Verkennend — een eerste werkversie van het contract staat in deze repo als `ne
 
 **Huidige situatie — Open Product (Maykin):**
 
-- Producten API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openproduct-producten_v1.6.0.yaml)
-- OpenAPI bron: [apis/rest/openproduct-producten/v1.6.0.yaml](/?file=apis/rest/openproduct-producten/v1.6.0.yaml)
-- Producttypen API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openproduct-producttypen_v1.6.0.yaml)
-- OpenAPI bron: [apis/rest/openproduct-producttypen/v1.6.0.yaml](/?file=apis/rest/openproduct-producttypen/v1.6.0.yaml)
+- Producten API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openproduct-producten_v1.7.0.yaml)
+- OpenAPI bron: [apis/rest/openproduct-producten/v1.7.0.yaml](/?file=apis/rest/openproduct-producten/v1.7.0.yaml)
+- Producttypen API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openproduct-producttypen_v1.7.0.yaml)
+- OpenAPI bron: [apis/rest/openproduct-producttypen/v1.7.0.yaml](/?file=apis/rest/openproduct-producttypen/v1.7.0.yaml)
 - Bron: [maykinmedia/open-product](https://github.com/maykinmedia/open-product)
 
 **Overig:**
@@ -146,8 +146,8 @@ Losse BPMN-bestanden:
 - Foutafhandeling: RFC 7807 via [schemas/fout/v0.0.1.json](/?file=schemas/fout/v0.0.1.json)
 - JSON Schema (draft 2020-12) voor producttype-definities
 - [Open Product](https://github.com/maykinmedia/open-product) — afstemming van begrippen en veldnamen;
-  API's in dit lab: [producten v1.6.0](/?url=/docs/bundled/apis_rest_openproduct-producten_v1.6.0.yaml),
-  [producttypen v1.6.0](/?url=/docs/bundled/apis_rest_openproduct-producttypen_v1.6.0.yaml)
+  API's in dit lab: [producten v1.7.0](/?url=/docs/bundled/apis_rest_openproduct-producten_v1.7.0.yaml),
+  [producttypen v1.7.0](/?url=/docs/bundled/apis_rest_openproduct-producttypen_v1.7.0.yaml)
 - [UPL — Uniforme Productnamenlijst](https://standaarden.overheid.nl/upl) — via `uniformeProductNaam`
 - [Logius — Samenwerkende Catalogi](https://www.logius.nl/onze-dienstverlening/interactie/samenwerkende-catalogi)
   en de [Omgevingswet PDC](https://samenwerken.pleio.nl/groups/view/814f7141-86c7-4fad-963d-497f5551f489/omgevingswet-ztc-en-pdc) — mogelijke bronnen voor producttype-catalogi
