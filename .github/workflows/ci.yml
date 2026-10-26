@@ -42,11 +42,28 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install dependencies
+        run: npx pnpm@10.26.0 install --frozen-lockfile
+
       - name: Valideer Arazzo-profielen
-        run: npx -y @redocly/cli@2.57.0 lint aansluitprofielen/*/*.arazzo.yaml
+        run: npx pnpm@10.26.0 lint:aansluitprofielen
 
       - name: Draai aansluitprofielen tegen referentieservers
-        run: bash aansluitprofielen/test.sh
+        run: npx pnpm@10.26.0 test:aansluitprofielen
+
+      - name: Rapport in samenvatting
+        if: always()
+        run: cat aansluitprofielen/results/rapport.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Rapport als artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aansluitprofielen-rapport
+          path: |
+            aansluitprofielen/results/rapport.md
+            aansluitprofielen/results/rapport.json
+          if-no-files-found: ignore
 
   validate-asyncapi:
     runs-on: ubuntu-latest
