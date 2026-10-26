@@ -1,21 +1,29 @@
 openapi: 3.0.3
 
 info:
-  title: MijnGesprekken
+  title: MijnGesprekken API
   description: |
     API voor het registreren en raadplegen van gesprekken tussen klanten en de gemeente.
 
     Een **Gesprek** is een dialoog, met een aanleiding, tussen een klant van een gemeente,
     de gemeente en eventuele andere betrokkenen. Het gesprek bevat één of meer
-    **Gespreksbijdragen** (wat een deelnemer toevoegt aan het gesprek), geleverd door
-    **Gespreksdeelnemers**.
+    **Gespreksbijdragen** (wat een deelnemer toevoegt aan het gesprek).
 
-    Dit informatiemodel omvat:
-    - `GESPREK` — de geregistreerde dialoog
-    - `GESPREKSBIJDRAGE` — een bijdrage c.q. bericht van een deelnemer
-    - `GESPREKSDEELNEMER` — een abstracte deelnemer aan een gesprek (Partij of Actor)
-    - `GESPREKSDEELNAME` — de registratie van deelname van een deelnemer aan een gesprek
-    - `GELEZEN GESPREKSBIJDRAGE` — de registratie dat een bijdrage gelezen is
+    Dit gepruned document omvat alleen:
+    - `GET /gesprekken` — lijst van gesprekken ophalen
+    - `POST /gesprekken/zoek` — gesprekken zoeken met samengestelde filters (AND/OR/NOT)
+    - `GET /gesprekken/{uuid}` — één gesprek ophalen, met gespreksbijdragen
+    - `POST /gesprekken` — gesprek (+ ontvanger(s) + eerste bijdrage) aanmaken
+    - `POST /gesprekken/{uuid}/eindigen` — gesprek beëindigen
+    - `POST /gespreksbijdragen` — vervolgbijdrage aan een gesprek toevoegen
+    - `POST /gespreksdeelnames` — deelname aan een bestaand gesprek toevoegen
+    - `POST /gespreksdeelnames/{uuid}/eindigen` — deelname beëindigen
+    - `POST /gespreksbijdragen/{uuid}/gelezen` — gespreksbijdrage als gelezen markeren
+
+    Alle overige operaties uit de volledige MijnGesprekken-standaard 0.2.1
+    (Gespreksdeelnemers, en de overige CRUD-operaties op
+    Gesprek/Gespreksbijdrage/Gespreksdeelname/GelezenGespreksbijdrage) zijn
+    hier verwijderd.
 
     Versie: next (ontwikkeling)
   version: "next"
@@ -33,16 +41,11 @@ tags:
     description: Operaties op gespreksresources.
   - name: Gespreksbijdragen
     description: Operaties op bijdragen binnen gesprekken.
-  - name: Gespreksdeelnemers
-    description: Operaties op deelnemers van gesprekken.
   - name: Gespreksdeelnames
-    description: Operaties op deelname-gegevens (wie neemt wanneer deel).
-  - name: GelezenGespreksbijdragen
-    description: Operaties op leesstatus van gespreksbijdragen.
-  - name: Bijlagen
-    description: Upload van bijlagen bij gesprekken (experimenteel).
+    description: Operaties op deelname van Partijen en Actoren aan gesprekken.
 
 paths:
+
   # ─────────────────────────────────────────
   # GESPREKKEN
   # ─────────────────────────────────────────
@@ -51,12 +54,15 @@ paths:
     get:
       operationId: gesprekken_list
       summary: Lijst van gesprekken ophalen
-      description: Geeft een gepagineerde lijst van alle gesprekken terug.
+      description: >
+        Geeft een gepagineerde lijst van alle gesprekken terug. Naast filters
+        op het gesprek zelf kan ook gefilterd worden op attributen van een
+        deelname (`gespreksdeelname*`).
       tags:
         - Gesprekken
       parameters:
-        - $ref: "#/components/parameters/page"
-        - $ref: "#/components/parameters/pageSize"
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
         - name: referentie
           in: query
           description: Filter op de unieke referentie van het gesprek.
@@ -74,31 +80,129 @@ paths:
           schema:
             type: string
             format: date-time
+        - name: gespreksdeelname
+          in: query
+          description: >
+            Filter op het gesprek waarin de gespreksdeelname met deze UUID
+            voorkomt.
+          schema:
+            type: string
+            format: uuid
+        - name: gespreksdeelname__type
+          in: query
+          description: >
+            Filter op gesprekken met een deelname van dit type (Partij of
+            Actor).
+          schema:
+            type: string
+            enum:
+              - actor
+              - partij
+        - name: gespreksdeelname__actor
+          in: query
+          description: >
+            Filter op gesprekken met een deelname die verwijst naar deze
+            Actor. Een Actor kan aan meerdere gesprekken deelnemen (elke keer
+            via een eigen gespreksdeelname); zelfde vorm als `actor` in
+            `DeelnameCreate`: een volledige URL-referentie (Klantinteracties
+            API), geen kale UUID.
+          schema:
+            type: string
+            format: uri
+        - name: gespreksdeelname__partij
+          in: query
+          description: >
+            Filter op gesprekken met een deelname die verwijst naar deze
+            Partij (`partij`). Een Partij kan aan meerdere gesprekken
+            deelnemen (elke keer via een eigen gespreksdeelname).
+          schema:
+            type: string
+            format: uuid
+        - name: gespreksdeelname__naam
+          in: query
+          description: >
+            Filter op gesprekken met een deelname van wie de naam deze tekst
+            bevat.
+          schema:
+            type: string
+        - name: gespreksdeelname__emailadres
+          in: query
+          description: >
+            Filter op gesprekken met een deelname met dit e-mailadres.
+          schema:
+            type: string
+            format: email
+        - name: gespreksdeelname__bsn
+          in: query
+          description: >
+            Filter op gesprekken met een deelname met dit
+            burgerservicenummer.
+          schema:
+            type: string
+            pattern: '^\d{9}$'
+        - name: gespreksdeelname__rsin
+          in: query
+          description: >
+            Filter op gesprekken met een deelname met dit RSIN.
+          schema:
+            type: string
+            pattern: '^\d{9}$'
+        - name: gespreksdeelname__kvkNummer
+          in: query
+          description: >
+            Filter op gesprekken met een deelname met dit KVK-nummer.
+          schema:
+            type: string
+            pattern: '^\d{8}$'
+        - name: gespreksdeelname__vestigingsnummer
+          in: query
+          description: >
+            Filter op gesprekken met een deelname met dit
+            vestigingsnummer.
+          schema:
+            type: string
+            pattern: '^\d{12}$'
       responses:
         "200":
           description: OK
           headers:
             X-Total-Count:
-              $ref: "#/components/headers/XTotalCount"
+              $ref: '#/components/headers/XTotalCount'
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GesprekList"
+                $ref: '#/components/schemas/GesprekList'
         "400":
-          $ref: "#/components/responses/400"
+          $ref: '#/components/responses/400'
         "401":
-          $ref: "#/components/responses/401"
+          $ref: '#/components/responses/401'
         "403":
-          $ref: "#/components/responses/403"
+          $ref: '#/components/responses/403'
         "500":
-          $ref: "#/components/responses/500"
+          $ref: '#/components/responses/500'
       security:
         - bearerAuth: []
 
     post:
       operationId: gesprekken_create
       summary: Gesprek aanmaken
-      description: Maakt een nieuw gesprek aan.
+      description: |
+        Maakt een nieuw gesprek aan, samen met de ontvanger(s) (`ontvanger`)
+        en de eerste gespreksbijdrage (`eersteBijdrage`). Een gesprek heeft
+        volgens het informatiemodel altijd minimaal één gespreksdeelnemer en
+        bevat altijd minimaal één gespreksbijdrage; gesprek, ontvanger(s) en
+        eerste bijdrage worden daarom atomair aangemaakt. `eersteBijdrage.verzender`
+        is expliciet, op dezelfde manier als `verzender` bij
+        `POST /gespreksbijdragen`.
+
+        Voor elk item in `ontvanger` wordt in dezelfde aanvraag een
+        gespreksdeelname aangemaakt op basis van een Partij of een Actor,
+        aangegeven met `type` (`partij` of `actor`) — zie `DeelnameCreate`.
+        Een gespreksdeelname bestaat alleen in de context van dit ene
+        gesprek; de Partij/Actor zelf kan wel aan meerdere gesprekken
+        deelnemen.
+
+        Vervolgbijdragen worden toegevoegd via `POST /gespreksbijdragen`.
       tags:
         - Gesprekken
       requestBody:
@@ -106,163 +210,199 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/GesprekCreate"
+              $ref: '#/components/schemas/GesprekCreate'
       responses:
         "201":
           description: Aangemaakt
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Gesprek"
+                $ref: '#/components/schemas/Gesprek'
         "400":
-          $ref: "#/components/responses/400"
+          $ref: '#/components/responses/400'
         "401":
-          $ref: "#/components/responses/401"
+          $ref: '#/components/responses/401'
         "403":
-          $ref: "#/components/responses/403"
+          $ref: '#/components/responses/403'
         "500":
-          $ref: "#/components/responses/500"
+          $ref: '#/components/responses/500'
+      security:
+        - bearerAuth: []
+
+  /gesprekken/zoek:
+    post:
+      operationId: gesprekken_zoeken
+      summary: Gesprekken zoeken met samengestelde filtercriteria
+      description: >
+        Zoekt gesprekken met filtercriteria die niet in de eenvoudige,
+        impliciet AND-gecombineerde queryparameters van `GET /gesprekken`
+        passen — met name AND/OR/NOT-combinaties over meerdere velden of
+        meerdere waarden voor hetzelfde veld (bijvoorbeeld
+        `rsin = x OF vestigingsnummer = y`, of "één van deze partij-URL's").
+        Gebruik dit endpoint alleen wanneer `GET /gesprekken` niet volstaat;
+        voor eenvoudige filters blijft die de voorkeursoperatie.
+
+        De beschikbare `veld`-namen in `filter` komen overeen met de
+        queryparameters van `GET /gesprekken` (`referentie`,
+        `aanvangsmomentGesprek`, en de `gespreksdeelname*`-velden).
+
+        Geeft, net als `GET /gesprekken`, een gepagineerde `GesprekList`
+        terug.
+      tags:
+        - Gesprekken
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GesprekkenZoekopdracht'
+            examples:
+              rsinOfVestigingsnummer:
+                summary: "rsin = x OF vestigingsnummer = y"
+                description: >
+                  Gesprekken waarbij de deelname óf dit RSIN, óf dit
+                  vestigingsnummer heeft.
+                value:
+                  filter:
+                    of:
+                      - veld: gespreksdeelname__rsin
+                        waarde: "123456782"
+                      - veld: gespreksdeelname__vestigingsnummer
+                        waarde: "123456789012"
+              meerdereActoren:
+                summary: Meerdere actor-URL's (OR op hetzelfde veld)
+                description: >
+                  Gesprekken waaraan één van deze drie Actoren heeft
+                  deelgenomen.
+                value:
+                  filter:
+                    of:
+                      - veld: gespreksdeelname__actor
+                        waarde: "https://klantinteracties.example.com/api/v1/actoren/pqr678"
+                      - veld: gespreksdeelname__actor
+                        waarde: "https://klantinteracties.example.com/api/v1/actoren/xyz999"
+                      - veld: gespreksdeelname__actor
+                        waarde: "https://klantinteracties.example.com/api/v1/actoren/abc123"
+              genestAndOr:
+                summary: "(rsin = x OF vestigingsnummer = y) EN gestart na 2026-01-01"
+                description: >
+                  Combinatie van een OR-groep met een aparte AND-voorwaarde:
+                  laat zien dat expressies willekeurig genest kunnen worden.
+                value:
+                  filter:
+                    en:
+                      - of:
+                          - veld: gespreksdeelname__rsin
+                            waarde: "123456782"
+                          - veld: gespreksdeelname__vestigingsnummer
+                            waarde: "123456789012"
+                      - veld: aanvangsmomentGesprek
+                        operator: gte
+                        waarde: "2026-01-01T00:00:00Z"
+              uitsluiting:
+                summary: Alle gesprekken behalve met deze partij
+                description: Voorbeeld van `niet` (NOT).
+                value:
+                  filter:
+                    niet:
+                      veld: gespreksdeelname__partij
+                      waarde: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Total-Count:
+              $ref: '#/components/headers/XTotalCount'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GesprekList'
+        "400":
+          $ref: '#/components/responses/400'
+        "401":
+          $ref: '#/components/responses/401'
+        "403":
+          $ref: '#/components/responses/403'
+        "500":
+          $ref: '#/components/responses/500'
       security:
         - bearerAuth: []
 
   /gesprekken/{uuid}:
-    parameters:
-      - $ref: "#/components/parameters/uuid"
-
     get:
-      operationId: gesprekken_retrieve
-      summary: Details van een gesprek ophalen
+      operationId: gesprekken_read
+      summary: Gesprek ophalen
+      description: >
+        Geeft één gesprek terug, inclusief de gespreksbijdragen die tot nu toe
+        aan dit gesprek zijn toegevoegd (chronologisch, oudste eerst).
       tags:
         - Gesprekken
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          description: UUID van het gesprek.
+          schema:
+            type: string
+            format: uuid
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Gesprek"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-    put:
-      operationId: gesprekken_update
-      summary: Gesprek volledig bijwerken
-      tags:
-        - Gesprekken
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GesprekCreate"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Gesprek"
+                $ref: '#/components/schemas/GesprekDetail'
         "400":
-          $ref: "#/components/responses/400"
+          $ref: '#/components/responses/400'
         "401":
-          $ref: "#/components/responses/401"
+          $ref: '#/components/responses/401'
         "403":
-          $ref: "#/components/responses/403"
+          $ref: '#/components/responses/403'
         "404":
-          $ref: "#/components/responses/404"
+          $ref: '#/components/responses/404'
         "500":
-          $ref: "#/components/responses/500"
+          $ref: '#/components/responses/500'
       security:
         - bearerAuth: []
 
-    patch:
-      operationId: gesprekken_partial_update
-      summary: Gesprek gedeeltelijk bijwerken
-      tags:
-        - Gesprekken
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GesprekPatch"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Gesprek"
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-    delete:
-      operationId: gesprekken_destroy
-      summary: Gesprek verwijderen
-      tags:
-        - Gesprekken
-      responses:
-        "204":
-          description: Verwijderd
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-  /gesprekken/{uuid}/bijlagen/upload-sessie:
-    parameters:
-      - $ref: "#/components/parameters/uuid"
-
+  /gesprekken/{uuid}/eindigen:
     post:
-      operationId: gesprekken_bijlagen_upload_sessie
-      summary: Start een upload voor een bijlage bij dit gesprek
-      description: |
-        Maakt de metadata aan voor een nieuwe bijlage (document) en retourneert een
-        tijdelijke pre-signed URL waar de client het fysieke bestand naartoe kan uploaden.
+      operationId: gesprekken_eindigen
+      summary: Gesprek beëindigen
+      description: >
+        Beëindigt het gesprek: zet `momentEindeGesprek` op het huidige moment.
+        Er is geen requestbody nodig — het systeem stelt het moment vast, net
+        zoals `aanvangsmomentGesprek` bij het aanmaken van het gesprek.
       tags:
         - Gesprekken
-        - Bijlagen
-      requestBody:
-        $ref: "../../../patterns/file-upload/v0.0.1.yaml#/requestBodies/UploadSessieAanvraag"
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          description: UUID van het te beëindigen gesprek.
+          schema:
+            type: string
+            format: uuid
       responses:
-        "201":
-          $ref: "../../../patterns/file-upload/v0.0.1.yaml#/responses/UploadSessieAangemaakt"
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Gesprek'
         "400":
-          $ref: "#/components/responses/400"
+          $ref: '#/components/responses/400'
         "401":
-          $ref: "#/components/responses/401"
+          $ref: '#/components/responses/401'
         "403":
-          $ref: "#/components/responses/403"
+          $ref: '#/components/responses/403'
         "404":
-          $ref: "#/components/responses/404"
-        "413":
-          $ref: "../../../patterns/file-upload/v0.0.1.yaml#/responses/PayloadTooLarge"
+          $ref: '#/components/responses/404'
         "500":
-          $ref: "#/components/responses/500"
+          $ref: '#/components/responses/500'
       security:
         - bearerAuth: []
 
@@ -271,63 +411,6 @@ paths:
   # ─────────────────────────────────────────
 
   /gespreksbijdragen:
-    get:
-      operationId: gespreksbijdragen_list
-      summary: Lijst van gespreksbijdragen ophalen
-      description: |
-        Geeft een gepagineerde lijst van gespreksbijdragen terug.
-        Een gespreksbijdrage is wat een deelnemer toevoegt aan het gesprek
-        (tekst, en optioneel bijlagen).
-      tags:
-        - Gespreksbijdragen
-      parameters:
-        - $ref: "#/components/parameters/page"
-        - $ref: "#/components/parameters/pageSize"
-        - name: gesprek
-          in: query
-          description: Filter op UUID van het gesprek.
-          schema:
-            type: string
-            format: uuid
-        - name: verzender
-          in: query
-          description: Filter op UUID van de verzender (gespreksdeelnemer).
-          schema:
-            type: string
-            format: uuid
-        - name: leveringsmoment__gte
-          in: query
-          description: Filter op leveringsmoment (groter dan of gelijk aan).
-          schema:
-            type: string
-            format: date-time
-        - name: leveringsmoment__lte
-          in: query
-          description: Filter op leveringsmoment (kleiner dan of gelijk aan).
-          schema:
-            type: string
-            format: date-time
-      responses:
-        "200":
-          description: OK
-          headers:
-            X-Total-Count:
-              $ref: "#/components/headers/XTotalCount"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GespreksbijdrageList"
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
     post:
       operationId: gespreksbijdragen_create
       summary: Gespreksbijdrage aanmaken
@@ -339,311 +422,66 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/GespreksbijdrageCreate"
+              $ref: '#/components/schemas/GespreksbijdrageCreate'
       responses:
         "201":
           description: Aangemaakt
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Gespreksbijdrage"
+                $ref: '#/components/schemas/Gespreksbijdrage'
         "400":
-          $ref: "#/components/responses/400"
+          $ref: '#/components/responses/400'
         "401":
-          $ref: "#/components/responses/401"
+          $ref: '#/components/responses/401'
         "403":
-          $ref: "#/components/responses/403"
+          $ref: '#/components/responses/403'
         "500":
-          $ref: "#/components/responses/500"
+          $ref: '#/components/responses/500'
       security:
         - bearerAuth: []
 
-  /gespreksbijdragen/{uuid}:
-    parameters:
-      - $ref: "#/components/parameters/uuid"
-
-    get:
-      operationId: gespreksbijdragen_retrieve
-      summary: Details van een gespreksbijdrage ophalen
+  /gespreksbijdragen/{uuid}/gelezen:
+    post:
+      operationId: gespreksbijdragen_gelezen
+      summary: Gespreksbijdrage als gelezen markeren
+      description: >
+        Registreert dat een gespreksdeelname deze gespreksbijdrage heeft
+        gelezen — komt overeen met de GELEZEN GESPREKSBIJDRAGE-relatieklasse
+        uit het informatiemodel (`MomentGelezen`).
       tags:
         - Gespreksbijdragen
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Gespreksbijdrage"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-    put:
-      operationId: gespreksbijdragen_update
-      summary: Gespreksbijdrage volledig bijwerken
-      tags:
-        - Gespreksbijdragen
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GespreksbijdrageCreate"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Gespreksbijdrage"
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-    patch:
-      operationId: gespreksbijdragen_partial_update
-      summary: Gespreksbijdrage gedeeltelijk bijwerken
-      tags:
-        - Gespreksbijdragen
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GespreksbijdragePatch"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Gespreksbijdrage"
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-    delete:
-      operationId: gespreksbijdragen_destroy
-      summary: Gespreksbijdrage verwijderen
-      tags:
-        - Gespreksbijdragen
-      responses:
-        "204":
-          description: Verwijderd
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-  # ─────────────────────────────────────────
-  # GESPREKSDEELNEMERS
-  # ─────────────────────────────────────────
-
-  /gespreksdeelnemers:
-    get:
-      operationId: gespreksdeelnemers_list
-      summary: Lijst van gespreksdeelnemers ophalen
-      description: |
-        Geeft een gepagineerde lijst van gespreksdeelnemers terug.
-        Een gespreksdeelnemer is een (potentiële) deelnemer aan een gesprek.
-        Gespreksdeelnemers zijn abstract: zij verwijzen naar een Actor (uit Klantinteracties).
-      tags:
-        - Gespreksdeelnemers
       parameters:
-        - $ref: "#/components/parameters/page"
-        - $ref: "#/components/parameters/pageSize"
-        - name: actor
-          in: query
-          description: Filter op de URL van de bijbehorende Actor (Klantinteracties).
+        - name: uuid
+          in: path
+          required: true
+          description: UUID van de gespreksbijdrage die is gelezen.
           schema:
             type: string
-            format: uri
-      responses:
-        "200":
-          description: OK
-          headers:
-            X-Total-Count:
-              $ref: "#/components/headers/XTotalCount"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GespreksdeelnemerList"
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-    post:
-      operationId: gespreksdeelnemers_create
-      summary: Gespreksdeelnemer aanmaken
-      tags:
-        - Gespreksdeelnemers
+            format: uuid
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/GespreksdeelnemerCreate"
+              $ref: '#/components/schemas/GelezenGespreksbijdrageCreate'
       responses:
         "201":
           description: Aangemaakt
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Gespreksdeelnemer"
+                $ref: '#/components/schemas/GelezenGespreksbijdrage'
         "400":
-          $ref: "#/components/responses/400"
+          $ref: '#/components/responses/400'
         "401":
-          $ref: "#/components/responses/401"
+          $ref: '#/components/responses/401'
         "403":
-          $ref: "#/components/responses/403"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-  /gespreksdeelnemers/{uuid}:
-    parameters:
-      - $ref: "#/components/parameters/uuid"
-
-    get:
-      operationId: gespreksdeelnemers_retrieve
-      summary: Details van een gespreksdeelnemer ophalen
-      tags:
-        - Gespreksdeelnemers
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Gespreksdeelnemer"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
+          $ref: '#/components/responses/403'
         "404":
-          $ref: "#/components/responses/404"
+          $ref: '#/components/responses/404'
         "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-    put:
-      operationId: gespreksdeelnemers_update
-      summary: Gespreksdeelnemer volledig bijwerken
-      tags:
-        - Gespreksdeelnemers
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GespreksdeelnemerCreate"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Gespreksdeelnemer"
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-    patch:
-      operationId: gespreksdeelnemers_partial_update
-      summary: Gespreksdeelnemer gedeeltelijk bijwerken
-      tags:
-        - Gespreksdeelnemers
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GespreksdeelnemerPatch"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Gespreksdeelnemer"
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-    delete:
-      operationId: gespreksdeelnemers_destroy
-      summary: Gespreksdeelnemer verwijderen
-      tags:
-        - Gespreksdeelnemers
-      responses:
-        "204":
-          description: Verwijderd
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
+          $ref: '#/components/responses/500'
       security:
         - bearerAuth: []
 
@@ -652,56 +490,15 @@ paths:
   # ─────────────────────────────────────────
 
   /gespreksdeelnames:
-    get:
-      operationId: gespreksdeelnames_list
-      summary: Lijst van gespreksdeelnames ophalen
-      description: |
-        Geeft een gepagineerde lijst van gespreksdeelnames terug.
-        Een gespreksdeelname registreert het feit dat een bepaalde deelnemer aan
-        een bepaald gesprek deelneemt, inclusief het aanvangsen eindmoment van
-        die deelname.
-      tags:
-        - Gespreksdeelnames
-      parameters:
-        - $ref: "#/components/parameters/page"
-        - $ref: "#/components/parameters/pageSize"
-        - name: gesprek
-          in: query
-          description: Filter op UUID van het gesprek.
-          schema:
-            type: string
-            format: uuid
-        - name: gespreksdeelnemer
-          in: query
-          description: Filter op UUID van de gespreksdeelnemer.
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: OK
-          headers:
-            X-Total-Count:
-              $ref: "#/components/headers/XTotalCount"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GespreksdeelnameList"
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
     post:
       operationId: gespreksdeelnames_create
-      summary: Gespreksdeelname aanmaken
-      description: Registreert een deelnemer als deelnemer van een gesprek.
+      summary: Deelname aan een gesprek toevoegen
+      description: >
+        Voegt een nieuwe deelname toe aan een reeds bestaand gesprek — voor
+        een Partij of Actor die zich later bij een lopend gesprek voegt. In
+        tegenstelling tot `ontvanger` bij `POST /gesprekken` (de deelnames
+        waarmee het gesprek wordt geopend) is dit voor deelnames die pas
+        later ontstaan.
       tags:
         - Gespreksdeelnames
       requestBody:
@@ -709,227 +506,62 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/GespreksdeelnameCreate"
+              $ref: '#/components/schemas/GespreksdeelnameCreate'
       responses:
         "201":
           description: Aangemaakt
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Gespreksdeelname"
+                $ref: '#/components/schemas/Gespreksdeelname'
         "400":
-          $ref: "#/components/responses/400"
+          $ref: '#/components/responses/400'
         "401":
-          $ref: "#/components/responses/401"
+          $ref: '#/components/responses/401'
         "403":
-          $ref: "#/components/responses/403"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-  /gespreksdeelnames/{uuid}:
-    parameters:
-      - $ref: "#/components/parameters/uuid"
-
-    get:
-      operationId: gespreksdeelnames_retrieve
-      summary: Details van een gespreksdeelname ophalen
-      tags:
-        - Gespreksdeelnames
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Gespreksdeelname"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
+          $ref: '#/components/responses/403'
         "404":
-          $ref: "#/components/responses/404"
+          $ref: '#/components/responses/404'
         "500":
-          $ref: "#/components/responses/500"
+          $ref: '#/components/responses/500'
       security:
         - bearerAuth: []
 
-    patch:
-      operationId: gespreksdeelnames_partial_update
-      summary: Gespreksdeelname gedeeltelijk bijwerken
-      description: Bijwerken van het eindmoment van een deelname.
-      tags:
-        - Gespreksdeelnames
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GespreksdeelnamePatch"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Gespreksdeelname"
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-    delete:
-      operationId: gespreksdeelnames_destroy
-      summary: Gespreksdeelname verwijderen
-      tags:
-        - Gespreksdeelnames
-      responses:
-        "204":
-          description: Verwijderd
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-  # ─────────────────────────────────────────
-  # GELEZEN GESPREKSBIJDRAGEN
-  # ─────────────────────────────────────────
-
-  /gelezenGespreksbijdragen:
-    get:
-      operationId: gelezenGespreksbijdragen_list
-      summary: Lijst van gelezen gespreksbijdragen ophalen
-      description: |
-        Geeft een gepagineerde lijst van lees-registraties terug.
-        Een gelezen-gespreksbijdrage registreert dat een gespreksbijdrage is
-        gelezen door een gespreksdeelnemer.
-        Er wordt geen onderscheid gemaakt tussen ontvangen (en ongelezen) en gelezen.
-      tags:
-        - GelezenGespreksbijdragen
-      parameters:
-        - $ref: "#/components/parameters/page"
-        - $ref: "#/components/parameters/pageSize"
-        - name: gespreksbijdrage
-          in: query
-          description: Filter op UUID van de gespreksbijdrage.
-          schema:
-            type: string
-            format: uuid
-        - name: gespreksdeelnemer
-          in: query
-          description: Filter op UUID van de gespreksdeelnemer die heeft gelezen.
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: OK
-          headers:
-            X-Total-Count:
-              $ref: "#/components/headers/XTotalCount"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GelezenGespreksbijdrageList"
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
+  /gespreksdeelnames/{uuid}/eindigen:
     post:
-      operationId: gelezenGespreksbijdragen_create
-      summary: Gelezen-registratie aanmaken
-      description: Registreert dat een gespreksbijdrage gelezen is door een deelnemer.
+      operationId: gespreksdeelnames_eindigen
+      summary: Deelname beëindigen
+      description: >
+        Beëindigt een gespreksdeelname: zet `momentEindeDeelname` op het
+        huidige moment. Er is geen requestbody nodig — het systeem stelt het
+        moment vast, net zoals bij `POST /gesprekken/{uuid}/eindigen`.
       tags:
-        - GelezenGespreksbijdragen
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GelezenGespreksbijdrageCreate"
-      responses:
-        "201":
-          description: Aangemaakt
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GelezenGespreksbijdrage"
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-  /gelezenGespreksbijdragen/{uuid}:
-    parameters:
-      - $ref: "#/components/parameters/uuid"
-
-    get:
-      operationId: gelezenGespreksbijdragen_retrieve
-      summary: Details van een gelezen-registratie ophalen
-      tags:
-        - GelezenGespreksbijdragen
+        - Gespreksdeelnames
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          description: UUID van de gespreksdeelname die wordt beëindigd.
+          schema:
+            type: string
+            format: uuid
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GelezenGespreksbijdrage"
+                $ref: '#/components/schemas/Gespreksdeelname'
+        "400":
+          $ref: '#/components/responses/400'
         "401":
-          $ref: "#/components/responses/401"
+          $ref: '#/components/responses/401'
         "403":
-          $ref: "#/components/responses/403"
+          $ref: '#/components/responses/403'
         "404":
-          $ref: "#/components/responses/404"
+          $ref: '#/components/responses/404'
         "500":
-          $ref: "#/components/responses/500"
-      security:
-        - bearerAuth: []
-
-    delete:
-      operationId: gelezenGespreksbijdragen_destroy
-      summary: Gelezen-registratie verwijderen
-      tags:
-        - GelezenGespreksbijdragen
-      responses:
-        "204":
-          description: Verwijderd
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
+          $ref: '#/components/responses/500'
       security:
         - bearerAuth: []
 
@@ -938,6 +570,7 @@ paths:
 # ─────────────────────────────────────────────────────────────────────────────
 
 components:
+
   securitySchemes:
     bearerAuth:
       type: http
@@ -945,16 +578,6 @@ components:
       bearerFormat: JWT
 
   parameters:
-    uuid:
-      name: uuid
-      in: path
-      required: true
-      description: Unieke resource identifier (UUID).
-      schema:
-        type: string
-        format: uuid
-        example: 095be615-a8ad-4c33-8e9c-c7612fbf6c9f
-
     page:
       name: page
       in: query
@@ -981,6 +604,7 @@ components:
         type: integer
 
   schemas:
+
     # ───── GESPREK ─────────────────────────────────────────────────────────
 
     GesprekBase:
@@ -989,75 +613,41 @@ components:
         Een dialoog, met een aanleiding, tussen een klant van een gemeente,
         de gemeente en eventuele andere betrokkenen.
       properties:
-        referentie:
-          type: string
-          description: >
-            Unieke identificerende betekenisvolle referentie van het gesprek.
-          example: "2026-GEM-00123"
-        aanvangsmomentGesprek:
-          type: string
-          format: date-time
-          description: Het moment dat het gesprek is gestart.
-          example: "2026-03-11T10:00:00Z"
-        momentEindeGesprek:
-          type: string
-          format: date-time
-          nullable: true
-          description: Het moment dat het gesprek is beëindigd.
-          example: "2026-03-11T10:45:00Z"
         gespreksonderwerp:
           type: string
           description: Het onderwerp van het gesprek.
           example: "Aanvraag bijstandsuitkering"
-        contactmoment:
-          type: string
-          format: uri
-          description: >
-            URL-referentie naar het bijbehorende Contactmoment
-            (Klantinteracties API). Een gesprek leidt tot een contactmoment.
-          example: "https://klantinteracties.example.com/api/v1/contactmomenten/abc123"
         aanleidingZaak:
           type: string
           format: uri
-          nullable: true
           description: >
             URL-referentie naar de ZAAK (ZGW Zaken API) die aanleiding is
             voor dit gesprek. Een zaak kan aanleiding zijn voor meerdere gesprekken.
           example: "https://zaken.example.com/api/v1/zaken/def456"
-        aanleidingThema:
-          type: string
-          format: uri
-          nullable: true
-          description: >
-            URL-referentie naar het Thema dat aanleiding is voor dit gesprek.
-          example: "https://klantinteracties.example.com/api/v1/themas/ghi789"
-        aanleidingProductDienst:
-          type: string
-          format: uri
-          nullable: true
-          description: >
-            URL-referentie naar het Product/Dienst dat aanleiding is voor dit gesprek.
-          example: "https://productencatalogus.example.com/api/v1/producten/jkl012"
-        aanleidingAgendaAfspraak:
-          type: string
-          format: uri
-          nullable: true
-          description: >
-            URL-referentie naar de Agenda-afspraak die aanleiding is voor dit gesprek.
-          example: "https://agenda.example.com/api/v1/afspraken/mno345"
 
     GesprekCreate:
       allOf:
-        - $ref: "#/components/schemas/GesprekBase"
+        - $ref: '#/components/schemas/GesprekBase'
+        - type: object
+          required:
+            - ontvanger
+            - eersteBijdrage
+          properties:
+            ontvanger:
+              type: array
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/DeelnameCreate'
+              description: >
+                Deelnames waarmee het gesprek wordt geopend. Een gesprek
+                heeft volgens het informatiemodel altijd minimaal één
+                gespreksdeelname, dus deze deelnames worden samen met het
+                gesprek in dezelfde aanvraag aangemaakt.
+            eersteBijdrage:
+              $ref: '#/components/schemas/EersteGespreksbijdrageCreate'
       required:
-        - referentie
-        - aanvangsmomentGesprek
         - gespreksonderwerp
-        - contactmoment
-
-    GesprekPatch:
-      allOf:
-        - $ref: "#/components/schemas/GesprekBase"
+        - aanleidingZaak
 
     Gesprek:
       allOf:
@@ -1078,14 +668,61 @@ components:
               readOnly: true
               description: URL van deze resource.
               example: "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
-        - $ref: "#/components/schemas/GesprekBase"
+            referentie:
+              type: string
+              readOnly: true
+              description: >
+                Unieke identificerende betekenisvolle referentie van het gesprek.
+                Wordt door het systeem gegenereerd bij het aanmaken van het
+                gesprek en kan niet worden opgegeven of gewijzigd.
+              example: "2026-GEM-00123"
+            aanvangsmomentGesprek:
+              type: string
+              format: date-time
+              readOnly: true
+              description: >
+                Het moment dat het gesprek is gestart. Wordt door het systeem
+                vastgesteld bij het aanmaken van het gesprek en kan niet worden
+                opgegeven of gewijzigd.
+              example: "2026-03-11T10:00:00Z"
+            momentEindeGesprek:
+              type: string
+              format: date-time
+              nullable: true
+              readOnly: true
+              description: >
+                Het moment dat het gesprek is beëindigd. Wordt gezet door
+                `POST /gesprekken/{uuid}/eindigen`; niet rechtstreeks op te
+                geven of te wijzigen.
+              example: "2026-03-11T10:45:00Z"
+        - $ref: '#/components/schemas/GesprekBase'
       required:
         - uuid
         - url
         - referentie
         - aanvangsmomentGesprek
         - gespreksonderwerp
-        - contactmoment
+        - aanleidingZaak
+
+    GesprekDetail:
+      description: >
+        Eén gesprek, aangevuld met de gespreksbijdragen binnen dat gesprek.
+        Gebruikt door `GET /gesprekken/{uuid}`; de lijstweergave
+        (`GET /gesprekken`) bevat deze bijdragen niet.
+      allOf:
+        - $ref: '#/components/schemas/Gesprek'
+        - type: object
+          required:
+            - gespreksbijdragen
+          properties:
+            gespreksbijdragen:
+              type: array
+              readOnly: true
+              items:
+                $ref: '#/components/schemas/Gespreksbijdrage'
+              description: >
+                De gespreksbijdragen binnen dit gesprek, chronologisch
+                geordend (oudste eerst).
 
     GesprekList:
       type: object
@@ -1093,54 +730,120 @@ components:
         count:
           type: integer
           description: Totaal aantal resultaten.
-          example: 1
         next:
           type: string
           format: uri
           nullable: true
           description: URL van de volgende pagina.
-          example: null
         previous:
           type: string
           format: uri
           nullable: true
           description: URL van de vorige pagina.
-          example: null
         results:
           type: array
           items:
-            $ref: "#/components/schemas/Gesprek"
-      example:
-        count: 3
-        next: null
-        previous: null
-        results:
-          - uuid: "095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
-            url: "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
-            referentie: "2026-GEM-00123"
-            aanvangsmomentGesprek: "2026-03-11T10:00:00Z"
-            momentEindeGesprek: "2026-03-11T10:45:00Z"
-            gespreksonderwerp: "Aanvraag bijstandsuitkering"
-            contactmoment: "https://klantinteracties.example.com/api/v1/contactmomenten/abc123"
-            aanleidingZaak: "https://zaken.example.com/api/v1/zaken/def456"
-            aanleidingThema: "https://klantinteracties.example.com/api/v1/themas/ghi789"
-            aanleidingProductDienst: "https://productencatalogus.example.com/api/v1/producten/jkl012"
-            aanleidingAgendaAfspraak: "https://agenda.example.com/api/v1/afspraken/mno345"
-          - uuid: "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"
-            url: "https://gesprekken.example.com/api/v1/gesprekken/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"
-            referentie: "2026-GEM-00124"
-            aanvangsmomentGesprek: "2026-04-15T14:00:00Z"
-            momentEindeGesprek: "2026-04-15T14:30:00Z"
-            gespreksonderwerp: "Voortgang schuldhulp"
-            contactmoment: "https://klantinteracties.example.com/api/v1/contactmomenten/xyz789"
-            aanleidingZaak: "https://zaken.example.com/api/v1/zaken/uvw012"
-          - uuid: "2f3e4d5c-6b7a-8d9e-0f1a-2b3c4d5e6f7a"
-            url: "https://gesprekken.example.com/api/v1/gesprekken/2f3e4d5c-6b7a-8d9e-0f1a-2b3c4d5e6f7a"
-            referentie: "2026-GEM-00125"
-            aanvangsmomentGesprek: "2026-05-20T09:15:00Z"
-            momentEindeGesprek: "2026-05-20T09:45:00Z"
-            gespreksonderwerp: "Vraag over parkeervergunning"
-            contactmoment: "https://klantinteracties.example.com/api/v1/contactmomenten/pas456"
+            $ref: '#/components/schemas/Gesprek'
+
+    # ───── ZOEKEN (POST /gesprekken/zoek) ───────────────────────────────────
+    # Structuur voor filtercriteria die niet in de impliciet AND-gecombineerde
+    # queryparameters van GET /gesprekken passen: AND/OR/NOT-combinaties over
+    # meerdere velden of meerdere waarden van hetzelfde veld.
+
+    GesprekkenZoekopdracht:
+      type: object
+      description: Zoekopdracht voor `POST /gesprekken/zoek`.
+      required:
+        - filter
+      properties:
+        filter:
+          $ref: '#/components/schemas/ZoekExpressie'
+
+    ZoekExpressie:
+      description: >
+        Eén knoop in de zoekboom: óf een enkele voorwaarde (`ZoekVoorwaarde`),
+        óf een AND/OR/NOT-combinatie van sub-expressies. Combinaties kunnen
+        genest worden voor willekeurig complexe filters.
+      oneOf:
+        - $ref: '#/components/schemas/ZoekVoorwaarde'
+        - $ref: '#/components/schemas/ZoekEn'
+        - $ref: '#/components/schemas/ZoekOf'
+        - $ref: '#/components/schemas/ZoekNiet'
+
+    ZoekVoorwaarde:
+      type: object
+      description: >
+        Eén enkele filtervoorwaarde op een veld. Dezelfde velden als de
+        queryparameters van `GET /gesprekken`, maar hier zonder `__gte`/`__lte`-
+        achtervoegsel — het vergelijkingstype zit in `operator`.
+      required:
+        - veld
+        - waarde
+      properties:
+        veld:
+          type: string
+          enum:
+            - referentie
+            - aanvangsmomentGesprek
+            - gespreksdeelname
+            - gespreksdeelname__type
+            - gespreksdeelname__actor
+            - gespreksdeelname__partij
+            - gespreksdeelname__naam
+            - gespreksdeelname__emailadres
+            - gespreksdeelname__bsn
+            - gespreksdeelname__rsin
+            - gespreksdeelname__kvkNummer
+            - gespreksdeelname__vestigingsnummer
+          description: Het te filteren veld.
+          example: gespreksdeelname__rsin
+        operator:
+          type: string
+          enum:
+            - eq
+            - gte
+            - lte
+          default: eq
+          description: >
+            Vergelijkingsoperator. `gte`/`lte` zijn alleen zinvol bij
+            `aanvangsmomentGesprek`; voor alle overige velden geldt `eq`.
+        waarde:
+          type: string
+          description: De waarde om op te filteren.
+          example: "123456782"
+
+    ZoekEn:
+      type: object
+      description: Waar aan alle sub-expressies moet worden voldaan (AND).
+      required:
+        - en
+      properties:
+        en:
+          type: array
+          minItems: 2
+          items:
+            $ref: '#/components/schemas/ZoekExpressie'
+
+    ZoekOf:
+      type: object
+      description: Waar aan minstens één sub-expressie moet worden voldaan (OR).
+      required:
+        - of
+      properties:
+        of:
+          type: array
+          minItems: 2
+          items:
+            $ref: '#/components/schemas/ZoekExpressie'
+
+    ZoekNiet:
+      type: object
+      description: Waar niet aan de sub-expressie mag worden voldaan (NOT).
+      required:
+        - niet
+      properties:
+        niet:
+          $ref: '#/components/schemas/ZoekExpressie'
 
     # ───── GESPREKSBIJDRAGE ────────────────────────────────────────────────
 
@@ -1148,11 +851,6 @@ components:
       type: object
       description: Wat een deelnemer toevoegt aan het gesprek.
       properties:
-        leveringsmoment:
-          type: string
-          format: date-time
-          description: Het moment dat de gespreksbijdrage is geleverd.
-          example: "2026-03-11T10:05:00Z"
         tekstGespreksBijdrage:
           type: string
           description: De tekst van de gespreksbijdrage.
@@ -1162,13 +860,6 @@ components:
           format: uuid
           description: UUID van het gesprek waartoe deze bijdrage behoort.
           example: "095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
-        verzender:
-          type: string
-          format: uuid
-          description: >
-            UUID van de gespreksdeelnemer die deze bijdrage heeft geleverd.
-            Een gespreksbijdrage is geleverd door exact één gespreksdeelnemer.
-          example: "550e8400-e29b-41d4-a716-446655440000"
         isReactieOp:
           type: string
           format: uuid
@@ -1184,21 +875,85 @@ components:
             en een URL naar het bijbehorende Enkelvoudig Informatieobject
             (ZGW Documenten API).
           items:
-            $ref: "#/components/schemas/Bijlage"
+            $ref: '#/components/schemas/Bijlage'
           default: []
+
+    VerzenderCreate:
+      type: object
+      description: >
+        De gespreksdeelname die deze gespreksbijdrage levert. Precies één van
+        de volgende twee opties:
+        - `gespreksdeelname`: UUID-referentie naar een reeds bestaande
+          Gespreksdeelname binnen hetzelfde gesprek.
+        - `nieuweDeelname`: maak in dezelfde aanvraag een nieuwe
+          Gespreksdeelname aan — zelfde vorm als een item in `ontvanger` bij
+          `POST /gesprekken` (zie `DeelnameCreate`).
+      oneOf:
+        - required:
+            - gespreksdeelname
+        - required:
+            - nieuweDeelname
+      properties:
+        gespreksdeelname:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            UUID van een reeds bestaande gespreksdeelname. Uitsluitend te
+            combineren met een lege `nieuweDeelname`.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        nieuweDeelname:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/DeelnameCreate'
+          description: >
+            Volledig deelname-object waarmee een nieuwe Gespreksdeelname
+            wordt aangemaakt. Uitsluitend te combineren met een lege
+            `gespreksdeelname`.
 
     GespreksbijdrageCreate:
       allOf:
-        - $ref: "#/components/schemas/GespreksbijdrageBase"
+        - $ref: '#/components/schemas/GespreksbijdrageBase'
+        - type: object
+          required:
+            - verzender
+          properties:
+            verzender:
+              $ref: '#/components/schemas/VerzenderCreate'
       required:
-        - leveringsmoment
         - tekstGespreksBijdrage
         - gesprek
-        - verzender
 
-    GespreksbijdragePatch:
-      allOf:
-        - $ref: "#/components/schemas/GespreksbijdrageBase"
+    EersteGespreksbijdrageCreate:
+      type: object
+      description: >
+        De eerste gespreksbijdrage waarmee een gesprek wordt geopend. Een gesprek
+        bevat volgens het informatiemodel altijd minimaal één gespreksbijdrage,
+        dus deze eerste bijdrage wordt samen met het gesprek in dezelfde aanvraag
+        aangemaakt (zie `POST /gesprekken`). Zelfde vorm als `GespreksbijdrageCreate`
+        (zie `POST /gespreksbijdragen`), met twee uitzonderingen: `gesprek` is hier
+        niet van toepassing (het gesprek bestaat nog niet) en `isReactieOp` is hier
+        niet van toepassing (er is nog geen eerdere gespreksbijdrage om op te
+        reageren). `verzender` is, net als bij `POST /gespreksbijdragen`, expliciet.
+      required:
+        - tekstGespreksBijdrage
+        - verzender
+      properties:
+        tekstGespreksBijdrage:
+          type: string
+          description: De tekst van de eerste gespreksbijdrage.
+          example: "Goedemorgen, ik wil graag informatie over de aanvraagprocedure."
+        bijlagen:
+          type: array
+          description: >
+            Bijlagen bij deze gespreksbijdrage, elk bestaande uit een versienummer
+            en een URL naar het bijbehorende Enkelvoudig Informatieobject
+            (ZGW Documenten API).
+          items:
+            $ref: '#/components/schemas/Bijlage'
+          default: []
+        verzender:
+          $ref: '#/components/schemas/VerzenderCreate'
 
     Gespreksbijdrage:
       allOf:
@@ -1218,7 +973,27 @@ components:
               format: uri
               readOnly: true
               description: URL van deze resource.
-        - $ref: "#/components/schemas/GespreksbijdrageBase"
+            leveringsmoment:
+              type: string
+              format: date-time
+              readOnly: true
+              description: >
+                Het moment dat de gespreksbijdrage is geleverd. Wordt door het
+                systeem vastgesteld bij het aanmaken van de gespreksbijdrage en
+                kan niet worden opgegeven of gewijzigd.
+              example: "2026-03-11T10:05:00Z"
+            verzender:
+              type: string
+              format: uuid
+              description: >
+                UUID van de gespreksdeelname die deze bijdrage heeft geleverd.
+                Een gespreksbijdrage is geleverd door exact één gespreksdeelname.
+                Ongeacht of bij het aanmaken naar een bestaande gespreksdeelname
+                is verwezen of een nieuwe is aangemaakt op basis van een partij of
+                actor, wordt hier steeds de resulterende gespreksdeelname-UUID
+                getoond.
+              example: "550e8400-e29b-41d4-a716-446655440000"
+        - $ref: '#/components/schemas/GespreksbijdrageBase'
       required:
         - uuid
         - url
@@ -1227,259 +1002,235 @@ components:
         - gesprek
         - verzender
 
-    GespreksbijdrageList:
-      type: object
-      properties:
-        count:
-          type: integer
-        next:
-          type: string
-          format: uri
-          nullable: true
-        previous:
-          type: string
-          format: uri
-          nullable: true
-        results:
-          type: array
-          items:
-            $ref: "#/components/schemas/Gespreksbijdrage"
+    # ───── GESPREKSDEELNAME ─────────────────────────────────────────────────
+    # Een gespreksdeelname bestaat uitsluitend in de context van één gesprek
+    # — de deelname ís de deelnemer, er is geen apart, over gesprekken heen
+    # herbruikbaar Gespreksdeelnemer-object. Wat wél over meerdere gesprekken
+    # heen herbruikbaar is, is de onderliggende Partij/Actor-referentie
+    # (`partij`/`actor`): dezelfde Partij of Actor kan aan meerdere gesprekken
+    # deelnemen, elke keer via een eigen gespreksdeelname. De volledige
+    # GESPREKSDEELNAME-resource (met eigen CRUD-endpoints) is bij het prunen
+    # verwijderd; alleen het aanmaken (`POST /gespreksdeelnames`) bleef nodig,
+    # naast het inline `DeelnameCreate`-object (onderdeel van GesprekCreate en
+    # VerzenderCreate).
 
-    # ───── GESPREKSDEELNEMER ───────────────────────────────────────────────
-
-    GespreksdeelnemerBase:
+    DeelnameCreate:
       type: object
-      description: |
-        Een (potentiële) deelnemer aan een gesprek. Abstract objecttype: verwijst
-        naar een Actor in de Klantinteracties-registratie. Een Actor kan een Partij
-        (burger, organisatie) of een Medewerker zijn.
+      description: >
+        De gegevens van één deelname aan een gesprek (element van `ontvanger`
+        in `GesprekCreate`, of van `nieuweDeelname` in `VerzenderCreate`/
+        `GespreksdeelnameCreate`). `type` geeft aan of de deelname een Partij
+        (burger, organisatie) of een Actor (medewerker, systeem) betreft; in
+        beide gevallen wordt in dezelfde aanvraag een nieuwe Gespreksdeelname
+        aangemaakt op basis van de bijbehorende referentie (`partij`
+        respectievelijk `actor`), aangevuld met `naam` en `emailadres`. Een
+        deelname bestaat alleen binnen dit ene gesprek; de Partij/Actor zelf
+        kan aan meerdere gesprekken deelnemen.
+      required:
+        - type
+        - naam
+        - emailadres
       properties:
+        type:
+          type: string
+          enum:
+            - actor
+            - partij
+          description: Geeft aan of `partij` of `actor` moet worden ingevuld.
+          example: partij
+        partij:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            UUID-referentie naar de Partij (Klantinteracties API) waarvoor een
+            nieuwe Gespreksdeelname wordt aangemaakt. Verplicht wanneer `type`
+            gelijk is aan `partij`.
+          example: "550e8400-e29b-41d4-a716-446655440000"
         actor:
           type: string
           format: uri
           nullable: true
           description: >
-            URL-referentie naar de bijbehorende Actor (Klantinteracties API).
+            URL-referentie naar een Actor (Klantinteracties API) waarvoor een
+            nieuwe Gespreksdeelname wordt aangemaakt. Verplicht wanneer `type`
+            gelijk is aan `actor`.
           example: "https://klantinteracties.example.com/api/v1/actoren/pqr678"
-
-    GespreksdeelnemerCreate:
-      allOf:
-        - $ref: "#/components/schemas/GespreksdeelnemerBase"
-
-    GespreksdeelnemerPatch:
-      allOf:
-        - $ref: "#/components/schemas/GespreksdeelnemerBase"
-
-    Gespreksdeelnemer:
-      allOf:
-        - type: object
-          required:
-            - uuid
-            - url
-          properties:
-            uuid:
-              type: string
-              format: uuid
-              readOnly: true
-              description: Unieke systeemidentifier van de gespreksdeelnemer.
-            url:
-              type: string
-              format: uri
-              readOnly: true
-              description: URL van deze resource.
-        - $ref: "#/components/schemas/GespreksdeelnemerBase"
-      required:
-        - uuid
-        - url
-
-    GespreksdeelnemerList:
-      type: object
-      properties:
-        count:
-          type: integer
-        next:
+        naam:
           type: string
-          format: uri
+          description: Naam van de deelnemer.
+          example: "Jan Jansen"
+        emailadres:
+          type: string
+          format: email
+          description: E-mailadres van de deelnemer.
+          example: "jan.jansen@example.com"
+        bsn:
+          type: string
+          pattern: '^\d{9}$'
           nullable: true
-        previous:
+          description: >
+            Burgerservicenummer van de deelnemer, indien het een natuurlijk
+            persoon betreft.
+          example: "123456782"
+        rsin:
           type: string
-          format: uri
+          pattern: '^\d{9}$'
           nullable: true
-        results:
-          type: array
-          items:
-            $ref: "#/components/schemas/Gespreksdeelnemer"
-
-    # ───── GESPREKSDEELNAME ────────────────────────────────────────────────
-
-    GespreksdeelnameBase:
-      type: object
-      description: |
-        Het feit dat een bepaalde deelnemer deelneemt aan een bepaald gesprek.
-        Registreert het aanvangsen eindmoment van de deelname.
-        Gedurende het gesprek kunnen betrokkenen worden toegevoegd aan of
-        verwijderd uit het gesprek.
-      properties:
-        gesprek:
+          description: >
+            RSIN van de deelnemer, indien het een rechtspersoon of
+            samenwerkingsverband betreft.
+          example: "123456782"
+        kvkNummer:
           type: string
-          format: uuid
-          description: UUID van het gesprek waaraan deelgenomen wordt.
-          example: "095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
-        gespreksdeelnemer:
-          type: string
-          format: uuid
-          description: UUID van de gespreksdeelnemer.
-          example: "550e8400-e29b-41d4-a716-446655440000"
-        aanvangsmomentDeelname:
-          type: string
-          format: date-time
-          description: Het moment dat de gespreksdeelnemer is toegevoegd aan het gesprek.
-          example: "2026-03-11T10:00:00Z"
-        momentEindeDeelname:
-          type: string
-          format: date-time
+          pattern: '^\d{8}$'
           nullable: true
-          description: Het moment dat de gespreksdeelnemer is verwijderd uit het gesprek.
-          example: null
+          description: >
+            KVK-nummer van de deelnemer, indien het een bij de Kamer van
+            Koophandel geregistreerde organisatie betreft.
+          example: "12345678"
+        vestigingsnummer:
+          type: string
+          pattern: '^\d{12}$'
+          nullable: true
+          description: >
+            Vestigingsnummer van de deelnemer, indien het een specifieke
+            vestiging van een organisatie betreft.
+          example: "123456789012"
 
     GespreksdeelnameCreate:
+      description: >
+        Registreert een deelname aan een reeds bestaand gesprek (zie
+        `POST /gespreksdeelnames`). Zelfde inhoud als een item in `ontvanger`
+        bij `POST /gesprekken` (zie `DeelnameCreate`), aangevuld met een
+        expliciete verwijzing naar het gesprek.
       allOf:
-        - $ref: "#/components/schemas/GespreksdeelnameBase"
-      required:
-        - gesprek
-        - gespreksdeelnemer
-        - aanvangsmomentDeelname
-
-    GespreksdeelnamePatch:
-      type: object
-      properties:
-        momentEindeDeelname:
-          type: string
-          format: date-time
-          nullable: true
-          description: Het moment dat de gespreksdeelnemer is verwijderd uit het gesprek.
+        - $ref: '#/components/schemas/DeelnameCreate'
+        - type: object
+          required:
+            - gesprek
+          properties:
+            gesprek:
+              type: string
+              format: uuid
+              description: UUID van het gesprek waaraan wordt deelgenomen.
+              example: "095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
 
     Gespreksdeelname:
+      description: >
+        Een deelname van een Partij of Actor aan een specifiek gesprek. Een
+        gespreksdeelname bestaat alleen binnen dit ene gesprek; dezelfde
+        Partij/Actor heeft in een ander gesprek een andere, eigen
+        gespreksdeelname.
       allOf:
         - type: object
           required:
             - uuid
             - url
+            - gesprek
           properties:
             uuid:
               type: string
               format: uuid
               readOnly: true
               description: Unieke systeemidentifier van de gespreksdeelname.
+              example: "550e8400-e29b-41d4-a716-446655440002"
             url:
               type: string
               format: uri
               readOnly: true
               description: URL van deze resource.
-        - $ref: "#/components/schemas/GespreksdeelnameBase"
+            gesprek:
+              type: string
+              format: uuid
+              description: UUID van het gesprek waaraan wordt deelgenomen.
+              example: "095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
+            aanvangsmomentDeelname:
+              type: string
+              format: date-time
+              readOnly: true
+              description: >
+                Het moment dat deze deelname is gestart. Wordt door het
+                systeem vastgesteld bij het aanmaken van de gespreksdeelname
+                en kan niet worden opgegeven of gewijzigd.
+              example: "2026-03-11T10:15:00Z"
+            momentEindeDeelname:
+              type: string
+              format: date-time
+              nullable: true
+              readOnly: true
+              description: >
+                Het moment dat de deelname is beëindigd. Wordt gezet door
+                `POST /gespreksdeelnames/{uuid}/eindigen`; niet rechtstreeks
+                op te geven of te wijzigen.
+              example: "2026-03-11T11:00:00Z"
+        - $ref: '#/components/schemas/DeelnameCreate'
       required:
         - uuid
         - url
         - gesprek
-        - gespreksdeelnemer
+        - type
+        - naam
+        - emailadres
         - aanvangsmomentDeelname
 
-    GespreksdeelnameList:
-      type: object
-      properties:
-        count:
-          type: integer
-        next:
-          type: string
-          format: uri
-          nullable: true
-        previous:
-          type: string
-          format: uri
-          nullable: true
-        results:
-          type: array
-          items:
-            $ref: "#/components/schemas/Gespreksdeelname"
-
-    # ───── GELEZEN GESPREKSBIJDRAGE ────────────────────────────────────────
-
-    GelezenGespreksbijdrageBase:
-      type: object
-      description: |
-        De registratie van het feit dat een gespreksbijdrage is gelezen door
-        een gespreksdeelnemer.
-        N.B.: Er wordt geen onderscheid gemaakt tussen ontvangen (en ongelezen)
-        en gelezen.
-      properties:
-        gespreksbijdrage:
-          type: string
-          format: uuid
-          description: UUID van de gelezen gespreksbijdrage.
-          example: "550e8400-e29b-41d4-a716-446655440001"
-        gespreksdeelnemer:
-          type: string
-          format: uuid
-          description: UUID van de gespreksdeelnemer die de bijdrage heeft gelezen.
-          example: "550e8400-e29b-41d4-a716-446655440000"
-        momentGelezen:
-          type: string
-          format: date-time
-          description: >
-            Het moment dat de gespreksbijdrage is gelezen door de betreffende
-            gespreksdeelnemer.
-          example: "2026-03-11T10:06:00Z"
+    # ───── GELEZEN GESPREKSBIJDRAGE ─────────────────────────────────────────
 
     GelezenGespreksbijdrageCreate:
-      allOf:
-        - $ref: "#/components/schemas/GelezenGespreksbijdrageBase"
+      type: object
+      description: >
+        Registreert dat een gespreksdeelname deze gespreksbijdrage heeft
+        gelezen (zie `POST /gespreksbijdragen/{uuid}/gelezen`). De
+        gespreksbijdrage zelf volgt uit het pad-`uuid`, niet uit deze body.
       required:
-        - gespreksbijdrage
-        - gespreksdeelnemer
-        - momentGelezen
+        - gespreksdeelname
+      properties:
+        gespreksdeelname:
+          type: string
+          format: uuid
+          description: UUID van de gespreksdeelname die de bijdrage heeft gelezen.
+          example: "550e8400-e29b-41d4-a716-446655440000"
 
     GelezenGespreksbijdrage:
-      allOf:
-        - type: object
-          required:
-            - uuid
-            - url
-          properties:
-            uuid:
-              type: string
-              format: uuid
-              readOnly: true
-              description: Unieke systeemidentifier van de lees-registratie.
-            url:
-              type: string
-              format: uri
-              readOnly: true
-              description: URL van deze resource.
-        - $ref: "#/components/schemas/GelezenGespreksbijdrageBase"
+      type: object
       required:
         - uuid
         - url
+        - gespreksdeelname
         - gespreksbijdrage
-        - gespreksdeelnemer
         - momentGelezen
-
-    GelezenGespreksbijdrageList:
-      type: object
       properties:
-        count:
-          type: integer
-        next:
+        uuid:
+          type: string
+          format: uuid
+          readOnly: true
+          description: Unieke systeemidentifier van de leesregistratie.
+          example: "550e8400-e29b-41d4-a716-446655440003"
+        url:
           type: string
           format: uri
-          nullable: true
-        previous:
+          readOnly: true
+          description: URL van deze resource.
+        gespreksdeelname:
           type: string
-          format: uri
-          nullable: true
-        results:
-          type: array
-          items:
-            $ref: "#/components/schemas/GelezenGespreksbijdrage"
+          format: uuid
+          description: UUID van de gespreksdeelname die de bijdrage heeft gelezen.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        gespreksbijdrage:
+          type: string
+          format: uuid
+          readOnly: true
+          description: UUID van de gespreksbijdrage die is gelezen.
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        momentGelezen:
+          type: string
+          format: date-time
+          readOnly: true
+          description: >
+            Het moment dat de gespreksbijdrage door deze gespreksdeelname is
+            gelezen. Wordt door het systeem vastgesteld bij het aanmaken van
+            de leesregistratie en kan niet worden opgegeven of gewijzigd.
+          example: "2026-03-11T10:20:00Z"
 
     # ───── BIJLAGE ─────────────────────────────────────────────────────────
 
@@ -1549,7 +1300,7 @@ components:
           type: array
           description: Lijst van ongeldige parameters (alleen bij 400).
           items:
-            $ref: "#/components/schemas/InvalidParam"
+            $ref: '#/components/schemas/InvalidParam'
 
     InvalidParam:
       type: object
@@ -1577,28 +1328,28 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/Fout"
+            $ref: '#/components/schemas/Fout'
     "401":
       description: Niet geauthenticeerd
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/Fout"
+            $ref: '#/components/schemas/Fout'
     "403":
       description: Geen toegang
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/Fout"
+            $ref: '#/components/schemas/Fout'
     "404":
       description: Niet gevonden
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/Fout"
+            $ref: '#/components/schemas/Fout'
     "500":
       description: Interne serverfout
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/Fout"
+            $ref: '#/components/schemas/Fout'
