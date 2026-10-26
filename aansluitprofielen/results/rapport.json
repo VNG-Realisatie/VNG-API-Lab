@@ -1,0 +1,677 @@
+{
+  "datum": "2026-10-26",
+  "respect": "2.57.0",
+  "samenvatting": {
+    "totaal": 66,
+    "pass": 50,
+    "fail": 16,
+    "bekend": 16,
+    "onverwacht": 0
+  },
+  "doelen": [
+    {
+      "id": "mijnzaken-next",
+      "profiel": "aansluitprofielen/mijnzaken/mijnzaken-next.arazzo.yaml",
+      "modi": {
+        "gedrag": {
+          "totaal": 5,
+          "pass": 5,
+          "fail": 0,
+          "bekend": 0,
+          "onverwacht": 0
+        },
+        "strikt": {
+          "totaal": 5,
+          "pass": 5,
+          "fail": 0,
+          "bekend": 0,
+          "onverwacht": 0
+        }
+      }
+    },
+    {
+      "id": "mijntaken-next",
+      "profiel": "aansluitprofielen/mijntaken/mijntaken-next.arazzo.yaml",
+      "modi": {
+        "gedrag": {
+          "totaal": 6,
+          "pass": 6,
+          "fail": 0,
+          "bekend": 0,
+          "onverwacht": 0
+        },
+        "strikt": {
+          "totaal": 6,
+          "pass": 6,
+          "fail": 0,
+          "bekend": 0,
+          "onverwacht": 0
+        }
+      }
+    },
+    {
+      "id": "zgw-burger",
+      "profiel": "aansluitprofielen/mijnzaken/zgw.arazzo.yaml",
+      "modi": {
+        "gedrag": {
+          "totaal": 5,
+          "pass": 5,
+          "fail": 0,
+          "bekend": 0,
+          "onverwacht": 0
+        },
+        "strikt": {
+          "totaal": 5,
+          "pass": 5,
+          "fail": 0,
+          "bekend": 0,
+          "onverwacht": 0
+        }
+      }
+    },
+    {
+      "id": "zgw-applicatie",
+      "profiel": "aansluitprofielen/mijnzaken/zgw.arazzo.yaml",
+      "modi": {
+        "gedrag": {
+          "totaal": 5,
+          "pass": 3,
+          "fail": 2,
+          "bekend": 2,
+          "onverwacht": 0
+        },
+        "strikt": {
+          "totaal": 5,
+          "pass": 3,
+          "fail": 2,
+          "bekend": 2,
+          "onverwacht": 0
+        }
+      }
+    },
+    {
+      "id": "openvtb-burger",
+      "profiel": "aansluitprofielen/mijntaken/openvtb.arazzo.yaml",
+      "modi": {
+        "gedrag": {
+          "totaal": 6,
+          "pass": 6,
+          "fail": 0,
+          "bekend": 0,
+          "onverwacht": 0
+        },
+        "strikt": {
+          "totaal": 6,
+          "pass": 0,
+          "fail": 6,
+          "bekend": 6,
+          "onverwacht": 0
+        }
+      }
+    },
+    {
+      "id": "objecten-burger",
+      "profiel": "aansluitprofielen/mijntaken/objecten.arazzo.yaml",
+      "modi": {
+        "gedrag": {
+          "totaal": 6,
+          "pass": 6,
+          "fail": 0,
+          "bekend": 0,
+          "onverwacht": 0
+        },
+        "strikt": {
+          "totaal": 6,
+          "pass": 0,
+          "fail": 6,
+          "bekend": 6,
+          "onverwacht": 0
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "id": "mijnzaken-next/gedrag/overzicht-naar-detail",
+      "doel": "mijnzaken-next",
+      "modus": "gedrag",
+      "workflow": "overzicht-naar-detail",
+      "status": "pass"
+    },
+    {
+      "id": "mijnzaken-next/gedrag/zonder-token",
+      "doel": "mijnzaken-next",
+      "modus": "gedrag",
+      "workflow": "zonder-token",
+      "status": "pass"
+    },
+    {
+      "id": "mijnzaken-next/gedrag/onbekende-zaak",
+      "doel": "mijnzaken-next",
+      "modus": "gedrag",
+      "workflow": "onbekende-zaak",
+      "status": "pass"
+    },
+    {
+      "id": "mijnzaken-next/gedrag/burger-a-haalt-zaak-van-burger-b",
+      "doel": "mijnzaken-next",
+      "modus": "gedrag",
+      "workflow": "burger-a-haalt-zaak-van-burger-b",
+      "status": "pass"
+    },
+    {
+      "id": "mijnzaken-next/gedrag/overzicht-bevat-alleen-eigen-zaken",
+      "doel": "mijnzaken-next",
+      "modus": "gedrag",
+      "workflow": "overzicht-bevat-alleen-eigen-zaken",
+      "status": "pass"
+    },
+    {
+      "id": "mijnzaken-next/strikt/overzicht-naar-detail",
+      "doel": "mijnzaken-next",
+      "modus": "strikt",
+      "workflow": "overzicht-naar-detail",
+      "status": "pass"
+    },
+    {
+      "id": "mijnzaken-next/strikt/zonder-token",
+      "doel": "mijnzaken-next",
+      "modus": "strikt",
+      "workflow": "zonder-token",
+      "status": "pass"
+    },
+    {
+      "id": "mijnzaken-next/strikt/onbekende-zaak",
+      "doel": "mijnzaken-next",
+      "modus": "strikt",
+      "workflow": "onbekende-zaak",
+      "status": "pass"
+    },
+    {
+      "id": "mijnzaken-next/strikt/burger-a-haalt-zaak-van-burger-b",
+      "doel": "mijnzaken-next",
+      "modus": "strikt",
+      "workflow": "burger-a-haalt-zaak-van-burger-b",
+      "status": "pass"
+    },
+    {
+      "id": "mijnzaken-next/strikt/overzicht-bevat-alleen-eigen-zaken",
+      "doel": "mijnzaken-next",
+      "modus": "strikt",
+      "workflow": "overzicht-bevat-alleen-eigen-zaken",
+      "status": "pass"
+    },
+    {
+      "id": "mijntaken-next/gedrag/overzicht-naar-detail",
+      "doel": "mijntaken-next",
+      "modus": "gedrag",
+      "workflow": "overzicht-naar-detail",
+      "status": "pass"
+    },
+    {
+      "id": "mijntaken-next/gedrag/taken-bij-zaak",
+      "doel": "mijntaken-next",
+      "modus": "gedrag",
+      "workflow": "taken-bij-zaak",
+      "status": "pass"
+    },
+    {
+      "id": "mijntaken-next/gedrag/zonder-token",
+      "doel": "mijntaken-next",
+      "modus": "gedrag",
+      "workflow": "zonder-token",
+      "status": "pass"
+    },
+    {
+      "id": "mijntaken-next/gedrag/onbekende-taak",
+      "doel": "mijntaken-next",
+      "modus": "gedrag",
+      "workflow": "onbekende-taak",
+      "status": "pass"
+    },
+    {
+      "id": "mijntaken-next/gedrag/burger-a-haalt-taak-van-burger-b",
+      "doel": "mijntaken-next",
+      "modus": "gedrag",
+      "workflow": "burger-a-haalt-taak-van-burger-b",
+      "status": "pass"
+    },
+    {
+      "id": "mijntaken-next/gedrag/overzicht-bevat-alleen-eigen-taken",
+      "doel": "mijntaken-next",
+      "modus": "gedrag",
+      "workflow": "overzicht-bevat-alleen-eigen-taken",
+      "status": "pass"
+    },
+    {
+      "id": "mijntaken-next/strikt/overzicht-naar-detail",
+      "doel": "mijntaken-next",
+      "modus": "strikt",
+      "workflow": "overzicht-naar-detail",
+      "status": "pass"
+    },
+    {
+      "id": "mijntaken-next/strikt/taken-bij-zaak",
+      "doel": "mijntaken-next",
+      "modus": "strikt",
+      "workflow": "taken-bij-zaak",
+      "status": "pass"
+    },
+    {
+      "id": "mijntaken-next/strikt/zonder-token",
+      "doel": "mijntaken-next",
+      "modus": "strikt",
+      "workflow": "zonder-token",
+      "status": "pass"
+    },
+    {
+      "id": "mijntaken-next/strikt/onbekende-taak",
+      "doel": "mijntaken-next",
+      "modus": "strikt",
+      "workflow": "onbekende-taak",
+      "status": "pass"
+    },
+    {
+      "id": "mijntaken-next/strikt/burger-a-haalt-taak-van-burger-b",
+      "doel": "mijntaken-next",
+      "modus": "strikt",
+      "workflow": "burger-a-haalt-taak-van-burger-b",
+      "status": "pass"
+    },
+    {
+      "id": "mijntaken-next/strikt/overzicht-bevat-alleen-eigen-taken",
+      "doel": "mijntaken-next",
+      "modus": "strikt",
+      "workflow": "overzicht-bevat-alleen-eigen-taken",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-burger/gedrag/overzicht-naar-detail",
+      "doel": "zgw-burger",
+      "modus": "gedrag",
+      "workflow": "overzicht-naar-detail",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-burger/gedrag/zonder-token",
+      "doel": "zgw-burger",
+      "modus": "gedrag",
+      "workflow": "zonder-token",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-burger/gedrag/onbekende-zaak",
+      "doel": "zgw-burger",
+      "modus": "gedrag",
+      "workflow": "onbekende-zaak",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-burger/gedrag/burger-a-haalt-zaak-van-burger-b",
+      "doel": "zgw-burger",
+      "modus": "gedrag",
+      "workflow": "burger-a-haalt-zaak-van-burger-b",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-burger/gedrag/burger-a-zoekt-op-bsn-van-burger-b",
+      "doel": "zgw-burger",
+      "modus": "gedrag",
+      "workflow": "burger-a-zoekt-op-bsn-van-burger-b",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-burger/strikt/overzicht-naar-detail",
+      "doel": "zgw-burger",
+      "modus": "strikt",
+      "workflow": "overzicht-naar-detail",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-burger/strikt/zonder-token",
+      "doel": "zgw-burger",
+      "modus": "strikt",
+      "workflow": "zonder-token",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-burger/strikt/onbekende-zaak",
+      "doel": "zgw-burger",
+      "modus": "strikt",
+      "workflow": "onbekende-zaak",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-burger/strikt/burger-a-haalt-zaak-van-burger-b",
+      "doel": "zgw-burger",
+      "modus": "strikt",
+      "workflow": "burger-a-haalt-zaak-van-burger-b",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-burger/strikt/burger-a-zoekt-op-bsn-van-burger-b",
+      "doel": "zgw-burger",
+      "modus": "strikt",
+      "workflow": "burger-a-zoekt-op-bsn-van-burger-b",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-applicatie/gedrag/overzicht-naar-detail",
+      "doel": "zgw-applicatie",
+      "modus": "gedrag",
+      "workflow": "overzicht-naar-detail",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-applicatie/gedrag/zonder-token",
+      "doel": "zgw-applicatie",
+      "modus": "gedrag",
+      "workflow": "zonder-token",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-applicatie/gedrag/onbekende-zaak",
+      "doel": "zgw-applicatie",
+      "modus": "gedrag",
+      "workflow": "onbekende-zaak",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-applicatie/gedrag/burger-a-haalt-zaak-van-burger-b",
+      "doel": "zgw-applicatie",
+      "modus": "gedrag",
+      "workflow": "burger-a-haalt-zaak-van-burger-b",
+      "status": "fail",
+      "reden": "a-haalt-zaak-van-b: success criteria check: Checking simple criteria: {\"condition\":\"$statusCode == 403 || $statusCode == 404\"}",
+      "bekend": {
+        "patroon": "*/burger-a-haalt-zaak-van-burger-b",
+        "uitleg": "ZGW 1.x autoriseert per applicatie, niet per burger"
+      }
+    },
+    {
+      "id": "zgw-applicatie/gedrag/burger-a-zoekt-op-bsn-van-burger-b",
+      "doel": "zgw-applicatie",
+      "modus": "gedrag",
+      "workflow": "burger-a-zoekt-op-bsn-van-burger-b",
+      "status": "fail",
+      "reden": "a-zoekt-op-bsn-van-b: success criteria check: Checking simple criteria: {\"condition\":\"$statusCode == 403 || $response.body#/count == 0\"}",
+      "bekend": {
+        "patroon": "*/burger-a-zoekt-op-bsn-van-burger-b",
+        "uitleg": "ZGW 1.x autoriseert per applicatie, niet per burger"
+      }
+    },
+    {
+      "id": "zgw-applicatie/strikt/overzicht-naar-detail",
+      "doel": "zgw-applicatie",
+      "modus": "strikt",
+      "workflow": "overzicht-naar-detail",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-applicatie/strikt/zonder-token",
+      "doel": "zgw-applicatie",
+      "modus": "strikt",
+      "workflow": "zonder-token",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-applicatie/strikt/onbekende-zaak",
+      "doel": "zgw-applicatie",
+      "modus": "strikt",
+      "workflow": "onbekende-zaak",
+      "status": "pass"
+    },
+    {
+      "id": "zgw-applicatie/strikt/burger-a-haalt-zaak-van-burger-b",
+      "doel": "zgw-applicatie",
+      "modus": "strikt",
+      "workflow": "burger-a-haalt-zaak-van-burger-b",
+      "status": "fail",
+      "reden": "a-haalt-zaak-van-b: success criteria check: Checking simple criteria: {\"condition\":\"$statusCode == 403 || $statusCode == 404\"}",
+      "bekend": {
+        "patroon": "*/burger-a-haalt-zaak-van-burger-b",
+        "uitleg": "ZGW 1.x autoriseert per applicatie, niet per burger"
+      }
+    },
+    {
+      "id": "zgw-applicatie/strikt/burger-a-zoekt-op-bsn-van-burger-b",
+      "doel": "zgw-applicatie",
+      "modus": "strikt",
+      "workflow": "burger-a-zoekt-op-bsn-van-burger-b",
+      "status": "fail",
+      "reden": "a-zoekt-op-bsn-van-b: success criteria check: Checking simple criteria: {\"condition\":\"$statusCode == 403 || $response.body#/count == 0\"}",
+      "bekend": {
+        "patroon": "*/burger-a-zoekt-op-bsn-van-burger-b",
+        "uitleg": "ZGW 1.x autoriseert per applicatie, niet per burger"
+      }
+    },
+    {
+      "id": "openvtb-burger/gedrag/overzicht-naar-detail",
+      "doel": "openvtb-burger",
+      "modus": "gedrag",
+      "workflow": "overzicht-naar-detail",
+      "status": "pass"
+    },
+    {
+      "id": "openvtb-burger/gedrag/taken-bij-zaak",
+      "doel": "openvtb-burger",
+      "modus": "gedrag",
+      "workflow": "taken-bij-zaak",
+      "status": "pass"
+    },
+    {
+      "id": "openvtb-burger/gedrag/zonder-token",
+      "doel": "openvtb-burger",
+      "modus": "gedrag",
+      "workflow": "zonder-token",
+      "status": "pass"
+    },
+    {
+      "id": "openvtb-burger/gedrag/onbekende-taak",
+      "doel": "openvtb-burger",
+      "modus": "gedrag",
+      "workflow": "onbekende-taak",
+      "status": "pass"
+    },
+    {
+      "id": "openvtb-burger/gedrag/burger-a-haalt-taak-van-burger-b",
+      "doel": "openvtb-burger",
+      "modus": "gedrag",
+      "workflow": "burger-a-haalt-taak-van-burger-b",
+      "status": "pass"
+    },
+    {
+      "id": "openvtb-burger/gedrag/burger-a-zoekt-op-burger-b",
+      "doel": "openvtb-burger",
+      "modus": "gedrag",
+      "workflow": "burger-a-zoekt-op-burger-b",
+      "status": "pass"
+    },
+    {
+      "id": "openvtb-burger/strikt/overzicht-naar-detail",
+      "doel": "openvtb-burger",
+      "modus": "strikt",
+      "workflow": "overzicht-naar-detail",
+      "status": "fail",
+      "reden": "zoek-taken: schema check: Ajv error: discriminator: \"properties/taakSoort\" must have \"const\" or \"enum\"",
+      "bekend": {
+        "patroon": "strikt/*",
+        "uitleg": "De Open VTB-spec documenteert geen 401/403/404 en de discriminator op taakSoort is niet valide voor Ajv"
+      }
+    },
+    {
+      "id": "openvtb-burger/strikt/taken-bij-zaak",
+      "doel": "openvtb-burger",
+      "modus": "strikt",
+      "workflow": "taken-bij-zaak",
+      "status": "fail",
+      "reden": "zoek-taken-bij-zaak: schema check: Ajv error: discriminator: \"properties/taakSoort\" must have \"const\" or \"enum\"",
+      "bekend": {
+        "patroon": "strikt/*",
+        "uitleg": "De Open VTB-spec documenteert geen 401/403/404 en de discriminator op taakSoort is niet valide voor Ajv"
+      }
+    },
+    {
+      "id": "openvtb-burger/strikt/zonder-token",
+      "doel": "openvtb-burger",
+      "modus": "strikt",
+      "workflow": "zonder-token",
+      "status": "fail",
+      "reden": "zoek-zonder-token: status code check: mislukt bij statuscode 401",
+      "bekend": {
+        "patroon": "strikt/*",
+        "uitleg": "De Open VTB-spec documenteert geen 401/403/404 en de discriminator op taakSoort is niet valide voor Ajv"
+      }
+    },
+    {
+      "id": "openvtb-burger/strikt/onbekende-taak",
+      "doel": "openvtb-burger",
+      "modus": "strikt",
+      "workflow": "onbekende-taak",
+      "status": "fail",
+      "reden": "haal-onbekende-taak: status code check: mislukt bij statuscode 404",
+      "bekend": {
+        "patroon": "strikt/*",
+        "uitleg": "De Open VTB-spec documenteert geen 401/403/404 en de discriminator op taakSoort is niet valide voor Ajv"
+      }
+    },
+    {
+      "id": "openvtb-burger/strikt/burger-a-haalt-taak-van-burger-b",
+      "doel": "openvtb-burger",
+      "modus": "strikt",
+      "workflow": "burger-a-haalt-taak-van-burger-b",
+      "status": "fail",
+      "reden": "b-zoekt-eigen-taken: schema check: Ajv error: discriminator: \"properties/taakSoort\" must have \"const\" or \"enum\"",
+      "bekend": {
+        "patroon": "strikt/*",
+        "uitleg": "De Open VTB-spec documenteert geen 401/403/404 en de discriminator op taakSoort is niet valide voor Ajv"
+      }
+    },
+    {
+      "id": "openvtb-burger/strikt/burger-a-zoekt-op-burger-b",
+      "doel": "openvtb-burger",
+      "modus": "strikt",
+      "workflow": "burger-a-zoekt-op-burger-b",
+      "status": "fail",
+      "reden": "a-zoekt-op-burger-b: schema check: Ajv error: discriminator: \"properties/taakSoort\" must have \"const\" or \"enum\"",
+      "bekend": {
+        "patroon": "strikt/*",
+        "uitleg": "De Open VTB-spec documenteert geen 401/403/404 en de discriminator op taakSoort is niet valide voor Ajv"
+      }
+    },
+    {
+      "id": "objecten-burger/gedrag/overzicht-naar-detail",
+      "doel": "objecten-burger",
+      "modus": "gedrag",
+      "workflow": "overzicht-naar-detail",
+      "status": "pass"
+    },
+    {
+      "id": "objecten-burger/gedrag/taken-bij-zaak",
+      "doel": "objecten-burger",
+      "modus": "gedrag",
+      "workflow": "taken-bij-zaak",
+      "status": "pass"
+    },
+    {
+      "id": "objecten-burger/gedrag/zonder-token",
+      "doel": "objecten-burger",
+      "modus": "gedrag",
+      "workflow": "zonder-token",
+      "status": "pass"
+    },
+    {
+      "id": "objecten-burger/gedrag/onbekende-taak",
+      "doel": "objecten-burger",
+      "modus": "gedrag",
+      "workflow": "onbekende-taak",
+      "status": "pass"
+    },
+    {
+      "id": "objecten-burger/gedrag/burger-a-haalt-taak-van-burger-b",
+      "doel": "objecten-burger",
+      "modus": "gedrag",
+      "workflow": "burger-a-haalt-taak-van-burger-b",
+      "status": "pass"
+    },
+    {
+      "id": "objecten-burger/gedrag/burger-a-zoekt-op-bsn-van-burger-b",
+      "doel": "objecten-burger",
+      "modus": "gedrag",
+      "workflow": "burger-a-zoekt-op-bsn-van-burger-b",
+      "status": "pass"
+    },
+    {
+      "id": "objecten-burger/strikt/overzicht-naar-detail",
+      "doel": "objecten-burger",
+      "modus": "strikt",
+      "workflow": "overzicht-naar-detail",
+      "status": "fail",
+      "reden": "zoek-taken: schema check: Ajv error: \"nullable\" cannot be used without \"type\"",
+      "bekend": {
+        "patroon": "strikt/*",
+        "uitleg": "De Objecten-spec documenteert geen 403/404 en is niet valide voor Ajv (nullable zonder type)"
+      }
+    },
+    {
+      "id": "objecten-burger/strikt/taken-bij-zaak",
+      "doel": "objecten-burger",
+      "modus": "strikt",
+      "workflow": "taken-bij-zaak",
+      "status": "fail",
+      "reden": "zoek-taken-bij-zaak: schema check: Ajv error: \"nullable\" cannot be used without \"type\"",
+      "bekend": {
+        "patroon": "strikt/*",
+        "uitleg": "De Objecten-spec documenteert geen 403/404 en is niet valide voor Ajv (nullable zonder type)"
+      }
+    },
+    {
+      "id": "objecten-burger/strikt/zonder-token",
+      "doel": "objecten-burger",
+      "modus": "strikt",
+      "workflow": "zonder-token",
+      "status": "fail",
+      "reden": "zoek-zonder-token: status code check: mislukt bij statuscode 403",
+      "bekend": {
+        "patroon": "strikt/*",
+        "uitleg": "De Objecten-spec documenteert geen 403/404 en is niet valide voor Ajv (nullable zonder type)"
+      }
+    },
+    {
+      "id": "objecten-burger/strikt/onbekende-taak",
+      "doel": "objecten-burger",
+      "modus": "strikt",
+      "workflow": "onbekende-taak",
+      "status": "fail",
+      "reden": "haal-onbekende-taak: status code check: mislukt bij statuscode 404",
+      "bekend": {
+        "patroon": "strikt/*",
+        "uitleg": "De Objecten-spec documenteert geen 403/404 en is niet valide voor Ajv (nullable zonder type)"
+      }
+    },
+    {
+      "id": "objecten-burger/strikt/burger-a-haalt-taak-van-burger-b",
+      "doel": "objecten-burger",
+      "modus": "strikt",
+      "workflow": "burger-a-haalt-taak-van-burger-b",
+      "status": "fail",
+      "reden": "b-zoekt-eigen-taken: schema check: Ajv error: \"nullable\" cannot be used without \"type\"",
+      "bekend": {
+        "patroon": "strikt/*",
+        "uitleg": "De Objecten-spec documenteert geen 403/404 en is niet valide voor Ajv (nullable zonder type)"
+      }
+    },
+    {
+      "id": "objecten-burger/strikt/burger-a-zoekt-op-bsn-van-burger-b",
+      "doel": "objecten-burger",
+      "modus": "strikt",
+      "workflow": "burger-a-zoekt-op-bsn-van-burger-b",
+      "status": "fail",
+      "reden": "a-zoekt-op-bsn-van-b: schema check: Ajv error: \"nullable\" cannot be used without \"type\"",
+      "bekend": {
+        "patroon": "strikt/*",
+        "uitleg": "De Objecten-spec documenteert geen 403/404 en is niet valide voor Ajv (nullable zonder type)"
+      }
+    }
+  ]
+}

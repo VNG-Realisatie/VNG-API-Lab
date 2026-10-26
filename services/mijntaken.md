@@ -1,5 +1,9 @@
 # Service beschrijving — MijnTaken
 
+| Eigenaar ontwerp | Status `next` in dit lab |
+| --- | --- |
+| Nog vast te stellen | Lab-voorstel, uitgewerkt door het VNG API lab. |
+
 Dit document beschrijft de functionele en technische specificaties van de **MijnTaken** service.
 Het dient als servicebeschrijving en Definition of Done voor implementatie en integratie van
 taken binnen een MijnOmgeving, in lijn met de VNG MijnServices standaarden.
@@ -17,13 +21,21 @@ Open VTB ontsluit Verzoeken, Taken en Berichten als aparte API's. Binnen MijnTak
 Taken-API relevant; Verzoeken en Berichten horen bij aanpalende processen maar staan hier ter referentie
 in het lab.
 
-- Taken API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openvtb-taken_v0.1.0.yaml)
-- OpenAPI bron: [apis/rest/openvtb-taken/v0.1.0.yaml](/?file=apis/rest/openvtb-taken/v0.1.0.yaml)
-- Verzoeken API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openvtb-verzoeken_v0.1.0.yaml)
-- OpenAPI bron: [apis/rest/openvtb-verzoeken/v0.1.0.yaml](/?file=apis/rest/openvtb-verzoeken/v0.1.0.yaml)
-- Berichten API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openvtb-berichten_v0.1.0.yaml)
-- OpenAPI bron: [apis/rest/openvtb-berichten/v0.1.0.yaml](/?file=apis/rest/openvtb-berichten/v0.1.0.yaml)
+- Taken API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openvtb-taken_v0.2.0.yaml)
+- OpenAPI bron: [apis/rest/openvtb-taken/v0.2.0.yaml](/?file=apis/rest/openvtb-taken/v0.2.0.yaml)
+- Verzoeken API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openvtb-verzoeken_v0.2.0.yaml)
+- OpenAPI bron: [apis/rest/openvtb-verzoeken/v0.2.0.yaml](/?file=apis/rest/openvtb-verzoeken/v0.2.0.yaml)
+- Berichten API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openvtb-berichten_v0.2.0.yaml)
+- OpenAPI bron: [apis/rest/openvtb-berichten/v0.2.0.yaml](/?file=apis/rest/openvtb-berichten/v0.2.0.yaml)
 - Bron: [maykinmedia/open-vtb](https://github.com/maykinmedia/open-vtb)
+
+**Huidige situatie — taken als objecten (Open Object):**
+
+Open Inwoner en de portaaltaak van GZAC/Valtimo slaan taken op als objecten van een objecttype
+"taak" in de Objecten API.
+
+- Objecten API (interactief): [Scalar](/?url=/docs/bundled/apis_rest_openobject-objecten_v2.8.0.yaml)
+- OpenAPI bron: [apis/rest/openobject-objecten/v2.8.0.yaml](/?file=apis/rest/openobject-objecten/v2.8.0.yaml)
 
 **Overig:**
 
@@ -52,16 +64,18 @@ andere providers kunnen hetzelfde contract ook aanbieden.
 - **Common Ground**: gegevens blijven bij de bron; het portaal is een weergave- en interactielaag, geen register.
 - **Implementatie-onafhankelijk contract**: het contract beschrijft wat een MijnTaken provider levert.
   OpenVTB kan deze providerrol invullen, maar is geen verplichte afhankelijkheid voor het portaal.
-- **Data-minimalisatie**: `POST /context/zoek` levert **samenvattingen**; detail wordt pas opgehaald vlak vóór uitvoering
+- **Data-minimalisatie**: `GET /taken` levert **samenvattingen**; detail wordt pas opgehaald vlak vóór uitvoering
   via `GET /taken/{uuid}`.
 - **Registratie bij de bron/provider**: proces- of afhandelcomponenten registreren taken bij de
   provider, bijvoorbeeld in OpenVTB. Het portaal raadpleegt en toont taken, maar beheert de taak niet
   als eigen bron.
-- **Extensibility / forward compatibility**: context is een kern met uitbreidingssets; het `include` mechanisme is
-  een open lijst (unknown keys negeren).
+- **Extensibility / forward compatibility**: nieuwe velden en statussen mogen worden toegevoegd; clients negeren
+  wat ze niet kennen.
 - **Context via URN**: taken kunnen gekoppeld zijn aan een context (`context.urn`, optioneel `canonicalUrl`) zodat
-  portalen context-navigatie kunnen bieden.
-- **Privacy by design**: filtercriteria staan in request body (geen identificerende gegevens in querystring/URL-logs).
+  portalen context-navigatie kunnen bieden. De URN is dezelfde als `urn` op de zaak in MijnZaken, dus "taken bij
+  deze zaak" is `GET /taken?context={urn}`.
+- **Privacy by design**: de burger komt uit het token; in de querystring staan alleen filters (status, context-URN),
+  nooit identificerende gegevens zoals BSN of klantId.
 
 ## Uitgangspunten voor “pilot / eerste implementaties”
 
@@ -124,27 +138,23 @@ De presentatie en interactie in de MijnOmgeving volgt bij voorkeur de NL Design 
 - OAuth 2.0 / Bearer tokens (deployment-specifiek; contract beschrijft het functionele model)
 - OpenAPI specificatie: zie [apis/rest/taken/next.yaml](/?file=apis/rest/taken/next.yaml)
 - Foutafhandeling: RFC 7807 via [schemas/fout/v0.0.1.json](/?file=schemas/fout/v0.0.1.json)
-- Open VTB (Maykin): [Taken](/?url=/docs/bundled/apis_rest_openvtb-taken_v0.1.0.yaml),
-  [Verzoeken](/?url=/docs/bundled/apis_rest_openvtb-verzoeken_v0.1.0.yaml),
-  [Berichten](/?url=/docs/bundled/apis_rest_openvtb-berichten_v0.1.0.yaml) — referentie-implementaties
+- Open VTB (Maykin): [Taken](/?url=/docs/bundled/apis_rest_openvtb-taken_v0.2.0.yaml),
+  [Verzoeken](/?url=/docs/bundled/apis_rest_openvtb-verzoeken_v0.2.0.yaml),
+  [Berichten](/?url=/docs/bundled/apis_rest_openvtb-berichten_v0.2.0.yaml) — referentie-implementaties
   in dit lab
 
 ## API’s & patronen
 
-### POST als query (privacy + ergonomie)
+### Overzicht ophalen
 
-Het portaal gebruikt **`POST /context/zoek`** als “query” zodat filtercriteria in de body zitten.
-Dit voorkomt lekken van (mogelijk) identificerende gegevens via URL’s, querystrings, browserhistory en access logs.
+- Endpoint: **`GET /taken`**
+- Filters (allemaal optioneel): `context` (URN van zaak, product of dossier), `status`, `page`, `pageSize`
+- Geen `klantId`: de provider leidt de burger af uit het token (`patterns/federated-auth`)
+- Output: `{count, next, previous, results}` met `TaakSamenvatting`-objecten, dezelfde envelop als MijnZaken
 
-### Context-zoek
-
-- Endpoint: **`POST /context/zoek`**
-- Belangrijkste input:
-  - `klantId` (verplicht)
-  - `contextId` (optioneel; URN)
-  - `include` (optioneel; bijv. `["taken"]`)
-- Output:
-  - `ContextResultaat` met optioneel `taken[]` (samenvattingen)
+Eerder gebruikte dit contract `POST /context/zoek` met `klantId` en `include` in de body. Dat is vervangen:
+met de burger uit het token staat er niets identificerends meer in de request, en het `include`-mechanisme
+had maar één type.
 
 ### Relatie tot OpenVTB
 
@@ -158,9 +168,37 @@ een OpenVTB-gebaseerde implementatie aantonen dat de vereiste velden en gedragin
 zijn: taakstatus, verloopdatum, contextkoppeling, uitvoeringsinformatie, detailopvraag en een
 stabiele relatie met de verwerkende applicatie.
 
+### MijnTaken op een Open VTB-bron
+
+Het aansluitprofiel [`aansluitprofielen/mijntaken/openvtb.arazzo.yaml`](/?file=aansluitprofielen/mijntaken/openvtb.arazzo.yaml)
+legt vast hoe een MijnOmgeving taken rechtstreeks uit Open VTB 0.2 haalt (`GET /externetaken`
+met `isToegewezenAan` en `isGerelateerdAan`) en hoe de velden op MijnTaken landen. Wat het
+profiel blootlegt:
+
+- Open VTB autoriseert per applicatie. De burger is een queryfilter met BSN in de URL, geen
+  claim uit het token. Een adapter (of de bron zelf) moet burger-gebonden tokens afdwingen.
+- Alleen een `urltaak` heeft een link om de taak uit te voeren (`uitvraagLink`). Voor een
+  `betaaltaak` en een `formuliertaak` moet de adapter `uitvoering.canonicalUrl` zelf maken.
+- Statussen verschillen: `uitgevoerd` en `verwerkt` worden `afgerond`, `niet_uitgevoerd` en
+  `afgebroken` worden `geannuleerd`.
+
+### MijnTaken op een Objecten API-bron
+
+Het aansluitprofiel [`aansluitprofielen/mijntaken/objecten.arazzo.yaml`](/?file=aansluitprofielen/mijntaken/objecten.arazzo.yaml)
+legt vast hoe een MijnOmgeving taakobjecten leest (`GET /objects?type=...&data_attr=...`) en hoe
+de velden op MijnTaken landen. Wat het blootlegt:
+
+- Ook hier autoriseert de bron per applicatie en per objecttype. De burger is een filter op de
+  inhoud van het object, met het BSN in de URL.
+- De koppeling naar de zaak is een uuid, geen URN. Een adapter moet de URN uit MijnZaken maken.
+- Open Inwoner (commit `5f4b021`, met `objects-api-client-django` 0.5.0) haalt alle objecten
+  van het taak-objecttype op en filtert pas daarna op BSN, in het portaal. Het portaal krijgt
+  dus taken van andere burgers binnen, en leest alleen de eerste pagina. Het profiel filtert
+  daarom in de bron, met `data_attr`.
+
 ### Twee-staps flow (lijst → detail)
 
-1. **Zoek/overzicht**: `POST /context/zoek` (samenvattingen)
+1. **Zoek/overzicht**: `GET /taken` (samenvattingen)
 2. **Detail vlak vóór uitvoering**: `GET /taken/{uuid}` (volledige taak incl. type-specifieke uitvoeringsvelden)
 
 ### Uitvoering: lokaal vs redirect

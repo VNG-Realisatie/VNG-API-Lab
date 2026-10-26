@@ -1,0 +1,228 @@
+arazzo: 1.0.1
+info:
+  title: Aansluitprofiel MijnTaken op Open VTB (Taken API 0.2)
+  version: 0.1.0
+  description: |
+    Dezelfde burgerflows als `mijntaken-next.arazzo.yaml`, maar direct op een takenregister
+    dat de Open VTB Taken API aanbiedt. Dit profiel legt vast welke Open VTB-calls een
+    MijnOmgeving doet, in welke volgorde, en welke velden op welk MijnTaken-veld landen.
+
+    Bron: Open VTB Taken API 0.2.0 (`apis/rest/openvtb-taken/v0.2.0.yaml`). Het portaal
+    gebruikt alleen `/externetaken`: dat endpoint geeft alle taaksoorten in één lijst, met
+    `taakSoort` als discriminator. De losse endpoints per soort (`/betaaltaken`,
+    `/urltaken`, `/formuliertaken`) zijn voor de partij die taken aanmaakt.
+
+    Veldmapping (Open VTB naar MijnTaken):
+      uuid                         -> uuid
+      titel                        -> titel.nl
+      toelichting (leeg = weglaten) -> toelichting.nl
+      status open                  -> status open
+      status uitgevoerd, verwerkt  -> status afgerond
+      status niet_uitgevoerd, afgebroken -> status geannuleerd
+      einddatumHandelingsTermijn   -> deadline
+      isGerelateerdAan[0].urn      -> context.urn
+      taakSoort urltaak            -> uitvoering.type extern,
+                                      uitvoering.canonicalUrl = details.uitvraagLink
+      taakSoort betaaltaak         -> uitvoering.type betaling; Open VTB levert geen
+                                      betaallink, de adapter moet die maken
+      taakSoort formuliertaak      -> uitvoering.type formulier,
+                                      uitvoering.definitie.schema = details.formulierDefinitie;
+                                      geen canonicalUrl, de adapter moet die maken
+      isToegewezenAan              -> niet in MijnTaken: de burger komt uit het token
+
+    Let op: Open VTB autoriseert per applicatie (`Authorization: Token ...`), niet per
+    burger. De burger is een queryfilter (`isToegewezenAan`) en staat daarmee als BSN in
+    de URL. De twee autorisatieworkflows hieronder falen daarom tegen een standaard
+    Open VTB. Dat is geen fout in de test maar het gat dat het aansluitprofiel zichtbaar
+    maakt: de bron, of een adapter ervoor, moet burger-gebonden tokens afdwingen.
+
+sourceDescriptions:
+  - name: taken
+    url: ../../apis/rest/openvtb-taken/v0.2.0.yaml
+    type: openapi
+
+workflows:
+  - workflowId: overzicht-naar-detail
+    summary: Burger opent zijn takenlijst en klikt een taak open
+    inputs:
+      type: object
+      required: [tokenA, burgerA]
+      properties:
+        tokenA:
+          type: string
+          description: Toegangstoken. In Open VTB 0.2 is dit een applicatietoken.
+        burgerA:
+          type: string
+          description: URN van testburger A, bijvoorbeeld `urn:nld:brp:bsn:111222333`.
+    steps:
+      - stepId: zoek-taken
+        description: Overzicht. Eén call over alle taaksoorten heen.
+        operationId: $sourceDescriptions.taken.externetakenList
+        parameters:
+          - in: query
+            name: isToegewezenAan
+            value: $inputs.burgerA
+          - in: query
+            name: status
+            value: open
+          - in: header
+            name: Authorization
+            value: Token {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/uuid != null
+          - condition: $response.body#/results/0/isToegewezenAan == $inputs.burgerA
+        outputs:
+          uuid: $response.body#/results/0/uuid
+          titel: $response.body#/results/0/titel
+          status: $response.body#/results/0/status
+          deadline: $response.body#/results/0/einddatumHandelingsTermijn
+          context: $response.body#/results/0/isGerelateerdAan/0/urn
+
+      - stepId: haal-detail
+        operationId: $sourceDescriptions.taken.externetakenRetrieve
+        parameters:
+          - in: path
+            name: uuid
+            value: $steps.zoek-taken.outputs.uuid
+          - in: header
+            name: Authorization
+            value: Token {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/uuid == $steps.zoek-taken.outputs.uuid
+          - condition: $response.body#/titel == $steps.zoek-taken.outputs.titel
+          - condition: $response.body#/status == $steps.zoek-taken.outputs.status
+          - condition: $response.body#/einddatumHandelingsTermijn == $steps.zoek-taken.outputs.deadline
+          - condition: $response.body#/isGerelateerdAan/0/urn == $steps.zoek-taken.outputs.context
+
+  - workflowId: taken-bij-zaak
+    summary: Burger opent een zaak en ziet de taken die daarbij horen
+    description: |
+      De zaak-URN is dezelfde als `urn` op de zaak in MijnZaken. In Open VTB is dat het
+      filter `isGerelateerdAan`; elke teruggegeven taak moet naar die zaak verwijzen.
+    inputs:
+      type: object
+      required: [tokenA, burgerA, zaakA]
+      properties:
+        tokenA:
+          type: string
+        burgerA:
+          type: string
+        zaakA:
+          type: string
+          description: URN van een zaak van burger A met minstens één taak.
+    steps:
+      - stepId: zoek-taken-bij-zaak
+        operationId: $sourceDescriptions.taken.externetakenList
+        parameters:
+          - in: query
+            name: isToegewezenAan
+            value: $inputs.burgerA
+          - in: query
+            name: isGerelateerdAan
+            value: $inputs.zaakA
+          - in: header
+            name: Authorization
+            value: Token {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/isGerelateerdAan/0/urn == $inputs.zaakA
+
+  - workflowId: zonder-token
+    summary: Zonder token geeft de API niets prijs
+    steps:
+      - stepId: zoek-zonder-token
+        operationId: $sourceDescriptions.taken.externetakenList
+        successCriteria:
+          - condition: $statusCode == 401 || $statusCode == 403
+
+  - workflowId: onbekende-taak
+    summary: Een taak die niet bestaat geeft 404
+    inputs:
+      type: object
+      required: [tokenA]
+      properties:
+        tokenA:
+          type: string
+    steps:
+      - stepId: haal-onbekende-taak
+        operationId: $sourceDescriptions.taken.externetakenRetrieve
+        parameters:
+          - in: path
+            name: uuid
+            value: 00000000-0000-4000-8000-000000000000
+          - in: header
+            name: Authorization
+            value: Token {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 404
+
+  - workflowId: burger-a-haalt-taak-van-burger-b
+    summary: Met het token van burger A is een taak van burger B niet op te halen
+    description: |
+      Faalt tegen standaard Open VTB 0.2: een applicatietoken ziet alle taken. Slaagt pas
+      als de bron (of een adapter) tokens per burger uitgeeft en afdwingt.
+    inputs:
+      type: object
+      required: [tokenA, tokenB, burgerB]
+      properties:
+        tokenA:
+          type: string
+        tokenB:
+          type: string
+        burgerB:
+          type: string
+    steps:
+      - stepId: b-zoekt-eigen-taken
+        operationId: $sourceDescriptions.taken.externetakenList
+        parameters:
+          - in: query
+            name: isToegewezenAan
+            value: $inputs.burgerB
+          - in: header
+            name: Authorization
+            value: Token {$inputs.tokenB}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/uuid != null
+        outputs:
+          uuidVanB: $response.body#/results/0/uuid
+
+      - stepId: a-haalt-taak-van-b
+        operationId: $sourceDescriptions.taken.externetakenRetrieve
+        parameters:
+          - in: path
+            name: uuid
+            value: $steps.b-zoekt-eigen-taken.outputs.uuidVanB
+          - in: header
+            name: Authorization
+            value: Token {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 403 || $statusCode == 404
+
+  - workflowId: burger-a-zoekt-op-burger-b
+    summary: Met het token van burger A levert zoeken op de URN van burger B niets op
+    description: |
+      In Open VTB is `isToegewezenAan` een queryfilter, geen geverifieerde claim. Faalt
+      daarom tegen standaard Open VTB 0.2.
+    inputs:
+      type: object
+      required: [tokenA, burgerB]
+      properties:
+        tokenA:
+          type: string
+        burgerB:
+          type: string
+    steps:
+      - stepId: a-zoekt-op-burger-b
+        operationId: $sourceDescriptions.taken.externetakenList
+        parameters:
+          - in: query
+            name: isToegewezenAan
+            value: $inputs.burgerB
+          - in: header
+            name: Authorization
+            value: Token {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 403 || $response.body#/count == 0

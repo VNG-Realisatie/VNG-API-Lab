@@ -141,11 +141,8 @@ export async function runTool(
 ): Promise<unknown> {
   switch (name) {
     case "get_taken": {
-      const data = await postJson(apiCall, "/apis/rest/taken/next/context/zoek", {
-        klantId: KLANT_ID,
-        include: ["taken"],
-      });
-      const taken = (data.taken || []).map((tk: any) => ({
+      const data = await getJson(apiCall, "/apis/rest/taken/next/taken?pageSize=100");
+      const taken = (data.results || []).map((tk: any) => ({
         titel: t(tk.titel),
         organisatie: orgFromContext(tk),
         deadline: tk.deadline || null,
@@ -155,13 +152,12 @@ export async function runTool(
       return { aantal: taken.length, taken };
     }
     case "get_zaken": {
-      const data = await postJson(apiCall, "/apis/rest/zaken/next/zaken/zoek", {
-        klantId: KLANT_ID,
-      });
-      const zaken = (Array.isArray(data) ? data : []).map((z: any) => ({
+      const data = await getJson(apiCall, "/apis/rest/zaken/next/zaken?pageSize=100");
+      const zaken = (Array.isArray(data?.results) ? data.results : []).map((z: any) => ({
         naam: z.naam,
         zaaknummer: z.zaaknummer || null,
         status: z.status || null,
+        huidigeStatus: z.huidigeStatus || null,
         datumAanvraag: z.datumAanvraag || z.datum || null,
         uuid: z.uuid || null,
       }));
