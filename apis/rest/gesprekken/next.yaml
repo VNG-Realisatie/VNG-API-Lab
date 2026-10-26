@@ -11,7 +11,7 @@ info:
 
     Dit gepruned document omvat alleen:
     - `GET /gesprekken` — lijst van gesprekken ophalen
-    - `POST /gesprekken/zoek` — gesprekken zoeken met samengestelde filters (AND/OR/NOT)
+    - `POST /gesprekken/zoek` — gesprekken zoeken met samengestelde filters (AND/OR, begrensd)
     - `GET /gesprekken/{uuid}` — één gesprek ophalen, met gespreksbijdragen
     - `POST /gesprekken` — gesprek (+ ontvanger(s) + eerste bijdrage) aanmaken
     - `POST /gesprekken/{uuid}/eindigen` — gesprek beëindigen
@@ -58,11 +58,17 @@ paths:
         Geeft een gepagineerde lijst van alle gesprekken terug. Naast filters
         op het gesprek zelf kan ook gefilterd worden op attributen van een
         deelname (`gespreksdeelname*`).
+
+        Filters op persoonsgegevens (`gespreksdeelname__bsn`,
+        `gespreksdeelname__emailadres`, `gespreksdeelname__naam`) zijn hier
+        bewust niet beschikbaar: queryparameters belanden in logs, caches en
+        browsergeschiedenis. Gebruik daarvoor `POST /gesprekken/zoek`, waar
+        de waarden in de body staan.
       tags:
         - Gesprekken
       parameters:
-        - $ref: '#/components/parameters/page'
-        - $ref: '#/components/parameters/pageSize'
+        - $ref: '../../../patterns/pagination/0.0.1.yaml#/parameters/page'
+        - $ref: '../../../patterns/pagination/0.0.1.yaml#/parameters/pageSize'
         - name: referentie
           in: query
           description: Filter op de unieke referentie van het gesprek.
@@ -118,28 +124,6 @@ paths:
           schema:
             type: string
             format: uuid
-        - name: gespreksdeelname__naam
-          in: query
-          description: >
-            Filter op gesprekken met een deelname van wie de naam deze tekst
-            bevat.
-          schema:
-            type: string
-        - name: gespreksdeelname__emailadres
-          in: query
-          description: >
-            Filter op gesprekken met een deelname met dit e-mailadres.
-          schema:
-            type: string
-            format: email
-        - name: gespreksdeelname__bsn
-          in: query
-          description: >
-            Filter op gesprekken met een deelname met dit
-            burgerservicenummer.
-          schema:
-            type: string
-            pattern: '^\d{9}$'
         - name: gespreksdeelname__rsin
           in: query
           description: >
@@ -165,9 +149,6 @@ paths:
       responses:
         "200":
           description: OK
-          headers:
-            X-Total-Count:
-              $ref: '#/components/headers/XTotalCount'
           content:
             application/json:
               schema:
@@ -236,9 +217,10 @@ paths:
       description: >
         Zoekt gesprekken met filtercriteria die niet in de eenvoudige,
         impliciet AND-gecombineerde queryparameters van `GET /gesprekken`
-        passen — met name AND/OR/NOT-combinaties over meerdere velden of
+        passen — met name AND/OR-combinaties over meerdere velden of
         meerdere waarden voor hetzelfde veld (bijvoorbeeld
-        `rsin = x OF vestigingsnummer = y`, of "één van deze partij-URL's").
+        `rsin = x OF vestigingsnummer = y`, of "één van deze actor-URL's" via
+        operator `in`).
         Gebruik dit endpoint alleen wanneer `GET /gesprekken` niet volstaat;
         voor eenvoudige filters blijft die de voorkeursoperatie.
 
@@ -248,11 +230,17 @@ paths:
 
         Geeft, net als `GET /gesprekken`, een gepagineerde `GesprekList`
         terug.
+
+        De grammatica is bewust begrensd (ADR-0003): operatoren `eq`, `in`,
+        `gte` en `lte`, ten hoogste twee niveaus nesting (een `en`/`of` met
+        voorwaarden of met groepen die zelf alleen voorwaarden bevatten), ten
+        hoogste 10 elementen per groep, en geen negatie. Zo blijft elke
+        zoekopdracht voorspelbaar in kosten en autoriseerbaar per aanroeper.
       tags:
         - Gesprekken
       parameters:
-        - $ref: '#/components/parameters/page'
-        - $ref: '#/components/parameters/pageSize'
+        - $ref: '../../../patterns/pagination/0.0.1.yaml#/parameters/page'
+        - $ref: '../../../patterns/pagination/0.0.1.yaml#/parameters/pageSize'
       requestBody:
         required: true
         content:
@@ -273,24 +261,23 @@ paths:
                       - veld: gespreksdeelname__vestigingsnummer
                         waarde: "123456789012"
               meerdereActoren:
-                summary: Meerdere actor-URL's (OR op hetzelfde veld)
+                summary: Meerdere actor-URL's (operator `in`)
                 description: >
                   Gesprekken waaraan één van deze drie Actoren heeft
                   deelgenomen.
                 value:
                   filter:
-                    of:
-                      - veld: gespreksdeelname__actor
-                        waarde: "https://klantinteracties.example.com/api/v1/actoren/pqr678"
-                      - veld: gespreksdeelname__actor
-                        waarde: "https://klantinteracties.example.com/api/v1/actoren/xyz999"
-                      - veld: gespreksdeelname__actor
-                        waarde: "https://klantinteracties.example.com/api/v1/actoren/abc123"
+                    veld: gespreksdeelname__actor
+                    operator: in
+                    waarde:
+                      - "https://klantinteracties.example.com/api/v1/actoren/pqr678"
+                      - "https://klantinteracties.example.com/api/v1/actoren/xyz999"
+                      - "https://klantinteracties.example.com/api/v1/actoren/abc123"
               genestAndOr:
                 summary: "(rsin = x OF vestigingsnummer = y) EN gestart na 2026-01-01"
                 description: >
                   Combinatie van een OR-groep met een aparte AND-voorwaarde:
-                  laat zien dat expressies willekeurig genest kunnen worden.
+                  het maximum van twee niveaus nesting.
                 value:
                   filter:
                     en:
@@ -302,20 +289,10 @@ paths:
                       - veld: aanvangsmomentGesprek
                         operator: gte
                         waarde: "2026-01-01T00:00:00Z"
-              uitsluiting:
-                summary: Alle gesprekken behalve met deze partij
-                description: Voorbeeld van `niet` (NOT).
-                value:
-                  filter:
-                    niet:
-                      veld: gespreksdeelname__partij
-                      waarde: "550e8400-e29b-41d4-a716-446655440000"
+                  sorteer: "-aanvangsmomentGesprek"
       responses:
         "200":
           description: OK
-          headers:
-            X-Total-Count:
-              $ref: '#/components/headers/XTotalCount'
           content:
             application/json:
               schema:
@@ -577,32 +554,6 @@ components:
       scheme: bearer
       bearerFormat: JWT
 
-  parameters:
-    page:
-      name: page
-      in: query
-      description: Paginanummer (1-gebaseerd).
-      schema:
-        type: integer
-        minimum: 1
-        default: 1
-
-    pageSize:
-      name: pageSize
-      in: query
-      description: Aantal resultaten per pagina.
-      schema:
-        type: integer
-        minimum: 1
-        maximum: 100
-        default: 20
-
-  headers:
-    XTotalCount:
-      description: Totaal aantal resultaten (voor paginering).
-      schema:
-        type: integer
-
   schemas:
 
     # ───── GESPREK ─────────────────────────────────────────────────────────
@@ -725,29 +676,19 @@ components:
                 geordend (oudste eerst).
 
     GesprekList:
-      type: object
-      properties:
-        count:
-          type: integer
-          description: Totaal aantal resultaten.
-        next:
-          type: string
-          format: uri
-          nullable: true
-          description: URL van de volgende pagina.
-        previous:
-          type: string
-          format: uri
-          nullable: true
-          description: URL van de vorige pagina.
-        results:
-          type: array
-          items:
-            $ref: '#/components/schemas/Gesprek'
+      description: Gepagineerde lijst van gesprekken (zie `patterns/pagination`).
+      allOf:
+        - $ref: '../../../patterns/pagination/0.0.1.yaml#/schemas/PaginatedBase'
+        - type: object
+          properties:
+            results:
+              type: array
+              items:
+                $ref: '#/components/schemas/Gesprek'
 
     # ───── ZOEKEN (POST /gesprekken/zoek) ───────────────────────────────────
     # Structuur voor filtercriteria die niet in de impliciet AND-gecombineerde
-    # queryparameters van GET /gesprekken passen: AND/OR/NOT-combinaties over
+    # queryparameters van GET /gesprekken passen: AND/OR-combinaties over
     # meerdere velden of meerdere waarden van hetzelfde veld.
 
     GesprekkenZoekopdracht:
@@ -758,17 +699,25 @@ components:
       properties:
         filter:
           $ref: '#/components/schemas/ZoekExpressie'
+        sorteer:
+          type: string
+          enum:
+            - aanvangsmomentGesprek
+            - "-aanvangsmomentGesprek"
+          description: >
+            Sorteervolgorde van de resultaten; `-` betekent aflopend.
+          example: "-aanvangsmomentGesprek"
 
     ZoekExpressie:
       description: >
-        Eén knoop in de zoekboom: óf een enkele voorwaarde (`ZoekVoorwaarde`),
-        óf een AND/OR/NOT-combinatie van sub-expressies. Combinaties kunnen
-        genest worden voor willekeurig complexe filters.
+        De wortel van de zoekboom: een enkele voorwaarde (`ZoekVoorwaarde`),
+        of een AND/OR-combinatie (`ZoekEn`/`ZoekOf`). Die combinatie mag
+        voorwaarden bevatten en groepen (`ZoekEnGroep`/`ZoekOfGroep`) die
+        zelf alleen voorwaarden bevatten; dieper nesten kan niet.
       oneOf:
         - $ref: '#/components/schemas/ZoekVoorwaarde'
         - $ref: '#/components/schemas/ZoekEn'
         - $ref: '#/components/schemas/ZoekOf'
-        - $ref: '#/components/schemas/ZoekNiet'
 
     ZoekVoorwaarde:
       type: object
@@ -801,49 +750,87 @@ components:
           type: string
           enum:
             - eq
+            - in
             - gte
             - lte
           default: eq
           description: >
             Vergelijkingsoperator. `gte`/`lte` zijn alleen zinvol bij
-            `aanvangsmomentGesprek`; voor alle overige velden geldt `eq`.
+            `aanvangsmomentGesprek`. Bij `in` is `waarde` een lijst en
+            voldoet het gesprek als het veld gelijk is aan één van de waarden.
         waarde:
-          type: string
-          description: De waarde om op te filteren.
+          description: >
+            De waarde om op te filteren: een tekst, of bij operator `in` een
+            lijst van ten hoogste 50 teksten.
+          oneOf:
+            - type: string
+            - type: array
+              minItems: 1
+              maxItems: 50
+              items:
+                type: string
           example: "123456782"
 
     ZoekEn:
       type: object
-      description: Waar aan alle sub-expressies moet worden voldaan (AND).
+      description: Waar aan alle elementen moet worden voldaan (AND).
       required:
         - en
       properties:
         en:
           type: array
           minItems: 2
+          maxItems: 10
           items:
-            $ref: '#/components/schemas/ZoekExpressie'
+            $ref: '#/components/schemas/ZoekElement'
 
     ZoekOf:
       type: object
-      description: Waar aan minstens één sub-expressie moet worden voldaan (OR).
+      description: Waar aan minstens één element moet worden voldaan (OR).
       required:
         - of
       properties:
         of:
           type: array
           minItems: 2
+          maxItems: 10
           items:
-            $ref: '#/components/schemas/ZoekExpressie'
+            $ref: '#/components/schemas/ZoekElement'
 
-    ZoekNiet:
+    ZoekElement:
+      description: >
+        Element binnen `ZoekEn`/`ZoekOf`: een voorwaarde of een groep van
+        alleen voorwaarden.
+      oneOf:
+        - $ref: '#/components/schemas/ZoekVoorwaarde'
+        - $ref: '#/components/schemas/ZoekEnGroep'
+        - $ref: '#/components/schemas/ZoekOfGroep'
+
+    ZoekEnGroep:
       type: object
-      description: Waar niet aan de sub-expressie mag worden voldaan (NOT).
+      description: AND-groep op het tweede niveau; bevat alleen voorwaarden.
       required:
-        - niet
+        - en
       properties:
-        niet:
-          $ref: '#/components/schemas/ZoekExpressie'
+        en:
+          type: array
+          minItems: 2
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/ZoekVoorwaarde'
+
+    ZoekOfGroep:
+      type: object
+      description: OR-groep op het tweede niveau; bevat alleen voorwaarden.
+      required:
+        - of
+      properties:
+        of:
+          type: array
+          minItems: 2
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/ZoekVoorwaarde'
 
     # ───── GESPREKSBIJDRAGE ────────────────────────────────────────────────
 
@@ -1260,96 +1247,34 @@ components:
             (ZGW Documenten API).
           example: "https://documenten.example.com/api/v1/enkelvoudiginformatieobjecten/abc123"
 
-    # ───── FOUTRESPONSEN ──────────────────────────────────────────────────
-
-    Fout:
-      type: object
-      description: Standaard foutmelding conform NL API Design Rules.
-      required:
-        - type
-        - title
-        - status
-        - detail
-        - instance
-      properties:
-        type:
-          type: string
-          description: URI-referentie naar het type fout.
-          example: "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1"
-        code:
-          type: string
-          description: Machine-leesbare foutcode.
-          example: "invalid"
-        title:
-          type: string
-          description: Korte omschrijving van het type fout.
-          example: "Bad request"
-        status:
-          type: integer
-          description: HTTP-statuscode.
-          example: 400
-        detail:
-          type: string
-          description: Uitleg van de fout.
-          example: "Validatiefout opgetreden."
-        instance:
-          type: string
-          description: URI-referentie naar dit specifieke foutgeval.
-          example: "urn:uuid:aabbccdd-1234-5678-abcd-ef0123456789"
-        invalidParams:
-          type: array
-          description: Lijst van ongeldige parameters (alleen bij 400).
-          items:
-            $ref: '#/components/schemas/InvalidParam'
-
-    InvalidParam:
-      type: object
-      required:
-        - name
-        - code
-        - reason
-      properties:
-        name:
-          type: string
-          description: Naam van het ongeldig veld of de ongeldig parameter.
-          example: "referentie"
-        code:
-          type: string
-          description: Machine-leesbare foutcode voor dit veld.
-          example: "required"
-        reason:
-          type: string
-          description: Uitleg waarom de waarde ongeldig is.
-          example: "Dit veld is verplicht."
-
   responses:
     "400":
       description: Ongeldige invoer
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/Fout'
+            $ref: '../../../schemas/fout/v0.0.1.json#/$defs/Fout'
     "401":
       description: Niet geauthenticeerd
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/Fout'
+            $ref: '../../../schemas/fout/v0.0.1.json#/$defs/Fout'
     "403":
       description: Geen toegang
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/Fout'
+            $ref: '../../../schemas/fout/v0.0.1.json#/$defs/Fout'
     "404":
       description: Niet gevonden
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/Fout'
+            $ref: '../../../schemas/fout/v0.0.1.json#/$defs/Fout'
     "500":
       description: Interne serverfout
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/Fout'
+            $ref: '../../../schemas/fout/v0.0.1.json#/$defs/Fout'
