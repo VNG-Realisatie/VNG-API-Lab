@@ -19,11 +19,35 @@ info:
     - `POST /gespreksdeelnames` — deelname aan een bestaand gesprek toevoegen
     - `POST /gespreksdeelnames/{uuid}/eindigen` — deelname beëindigen
     - `POST /gespreksbijdragen/{uuid}/gelezen` — gespreksbijdrage als gelezen markeren
+    - `GET /events` — realtime wijzigingen volgen (Server-Sent Events)
 
     Alle overige operaties uit de volledige MijnGesprekken-standaard 0.2.1
     (Gespreksdeelnemers, en de overige CRUD-operaties op
     Gesprek/Gespreksbijdrage/Gespreksdeelname/GelezenGespreksbijdrage) zijn
     hier verwijderd.
+
+    Model: Visma Roxit (Johannes Battjes), versie 2026-09-30
+
+    Het gesprek is het onderwerp; een zaak is hooguit de aanleiding. Eén zaak
+    kan daarom aanleiding zijn voor meerdere gesprekken.
+
+    ## Realtime: snapshot + events
+
+    Conform ADR-0002 volgt een client wijzigingen in twee stappen:
+
+    1. **Snapshot**: haal de huidige stand op via `GET /gesprekken`,
+       `POST /gesprekken/zoek` en/of `GET /gesprekken/{uuid}`. Neem de waarde
+       van de `Feed-Cursor`-header uit de eerste response.
+    2. **Tail**: open `GET /events` met die cursor als `Last-Event-ID`. De
+       server levert alle events die na de snapshot zijn ontstaan.
+
+    Bij een verbroken verbinding stuurt de client bij het opnieuw verbinden
+    het laatst ontvangen SSE-`id` mee als `Last-Event-ID`. Events kunnen
+    dubbel aankomen; de client ontdubbelt op het CloudEvent-`id`. Schrijven
+    gaat altijd via de REST-operaties; de stream is alleen-lezen. Een
+    implementatie zonder `/events` blijft een geldige implementatie van deze
+    API; clients vallen dan terug op periodiek opnieuw ophalen. De algemene
+    regels staan in `patterns/event-stream`.
 
     Versie: next (ontwikkeling)
   version: "next"
@@ -43,6 +67,8 @@ tags:
     description: Operaties op bijdragen binnen gesprekken.
   - name: Gespreksdeelnames
     description: Operaties op deelname van Partijen en Actoren aan gesprekken.
+  - name: Events
+    description: Realtime wijzigingen volgen via Server-Sent Events.
 
 paths:
 
@@ -149,6 +175,9 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            Feed-Cursor:
+              $ref: '../../../patterns/event-stream/next.yaml#/headers/FeedCursor'
           content:
             application/json:
               schema:
@@ -293,6 +322,9 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            Feed-Cursor:
+              $ref: '../../../patterns/event-stream/next.yaml#/headers/FeedCursor'
           content:
             application/json:
               schema:
@@ -328,6 +360,9 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            Feed-Cursor:
+              $ref: '../../../patterns/event-stream/next.yaml#/headers/FeedCursor'
           content:
             application/json:
               schema:
@@ -537,6 +572,93 @@ paths:
           $ref: '#/components/responses/403'
         "404":
           $ref: '#/components/responses/404'
+        "500":
+          $ref: '#/components/responses/500'
+      security:
+        - bearerAuth: []
+
+  # ─────────────────────────────────────────
+  # EVENTS
+  # ─────────────────────────────────────────
+
+  /events:
+    get:
+      operationId: events_stream
+      summary: Realtime wijzigingen volgen (Server-Sent Events)
+      description: |
+        Levert een doorlopende stroom van wijzigingen als
+        [Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html),
+        elk met een [CloudEvent 1.0](https://cloudevents.io/) als `data`.
+        Zie "Realtime: snapshot + events" in de API-beschrijving (ADR-0002)
+        en [`patterns/event-stream`](../../../patterns/event-stream/next.yaml)
+        voor de algemene regels.
+
+        **Scope.** De stroom bevat alleen events over gesprekken die de
+        aanroeper mag lezen. Voor een burger zijn dat de gesprekken waarin
+        diens Partij een gespreksdeelname heeft. Met `gesprek` kan de stroom
+        verder worden versmald.
+
+        **Formaat.** Elk event bestaat uit de SSE-velden `id` (gelijk aan
+        CloudEvent-`sequence`), `event` (gelijk aan CloudEvent-`type`) en
+        `data` (het CloudEvent als JSON). Elke 30 seconden stuurt de server
+        een commentaarregel (`: ping`) om de verbinding open te houden.
+        `subject` is altijd de URL van het gesprek waarop het event betrekking
+        heeft.
+
+        **Eventtypes.**
+
+        | `type` | Ontstaat bij | `data` |
+        |---|---|---|
+        | `nl.vng.gesprekken.gesprek.aangemaakt` | `POST /gesprekken` | `Gesprek` |
+        | `nl.vng.gesprekken.gesprek.beeindigd` | `POST /gesprekken/{uuid}/eindigen` | `Gesprek` |
+        | `nl.vng.gesprekken.gesprek.verwijderd` | vernietiging na afloop van de bewaartermijn | `Tombstone` |
+        | `nl.vng.gesprekken.gesprek.geredigeerd` | inhoud van het gesprek uit de historie verwijderd (beheerhandeling) | `Redactie` |
+        | `nl.vng.gesprekken.gespreksbijdrage.aangemaakt` | `eersteBijdrage` bij `POST /gesprekken`, `POST /gespreksbijdragen` | `Gespreksbijdrage` |
+        | `nl.vng.gesprekken.gespreksdeelname.aangemaakt` | `ontvanger` bij `POST /gesprekken`, `POST /gespreksdeelnames`, `nieuweDeelname` | `GespreksdeelnameEvent` |
+        | `nl.vng.gesprekken.gespreksdeelname.beeindigd` | `POST /gespreksdeelnames/{uuid}/eindigen` | `GespreksdeelnameEvent` |
+        | `nl.vng.gesprekken.gespreksbijdrage.gelezen` | `POST /gespreksbijdragen/{uuid}/gelezen` | `GelezenGespreksbijdrage` |
+        | `nl.vng.gesprekken.gespreksbijdrage.geredigeerd` | bijdrage uit de historie verwijderd, bijvoorbeeld omdat die gegevens bevatte die er niet in hoorden (beheerhandeling) | `Redactie` |
+
+        Bij `geredigeerd` verwijdert de client de inhoud van de genoemde
+        events uit zijn eigen opslag (zie `Redactie` in het pattern).
+
+        **Privacy.** Deelname-events bevatten geen `bsn`, `rsin`,
+        `kvkNummer`, `vestigingsnummer` of `emailadres`, omdat alle deelnemers
+        van het gesprek ze ontvangen. Gebruik daarvoor de REST-operaties, die
+        per aanroeper autoriseren.
+      tags:
+        - Events
+      parameters:
+        - name: gesprek
+          in: query
+          required: false
+          description: >
+            Optioneel: versmal de stroom tot deze gesprekken (UUID's). Zonder
+            deze parameter levert de stroom events over alle gesprekken die de
+            aanroeper mag lezen.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+        - $ref: '../../../patterns/event-stream/next.yaml#/parameters/LastEventId'
+      responses:
+        "200":
+          description: Doorlopende SSE-stroom van CloudEvents.
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/GesprekEvent'
+        "400":
+          $ref: '#/components/responses/400'
+        "401":
+          $ref: '#/components/responses/401'
+        "403":
+          $ref: '#/components/responses/403'
+        "410":
+          $ref: '../../../patterns/event-stream/next.yaml#/responses/CursorVerlopen'
         "500":
           $ref: '#/components/responses/500'
       security:
@@ -1218,6 +1340,115 @@ components:
             gelezen. Wordt door het systeem vastgesteld bij het aanmaken van
             de leesregistratie en kan niet worden opgegeven of gewijzigd.
           example: "2026-03-11T10:20:00Z"
+
+    # ───── EVENTS ──────────────────────────────────────────────────────────
+
+    GesprekEvent:
+      description: >
+        Een wijziging als CloudEvent 1.0, geleverd als `data` van een
+        SSE-bericht op `GET /events` (zie `patterns/event-stream`).
+      allOf:
+        - $ref: '../../../patterns/event-stream/next.yaml#/schemas/EventBasis'
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - nl.vng.gesprekken.gesprek.aangemaakt
+                - nl.vng.gesprekken.gesprek.beeindigd
+                - nl.vng.gesprekken.gesprek.verwijderd
+                - nl.vng.gesprekken.gesprek.geredigeerd
+                - nl.vng.gesprekken.gespreksbijdrage.aangemaakt
+                - nl.vng.gesprekken.gespreksbijdrage.gelezen
+                - nl.vng.gesprekken.gespreksbijdrage.geredigeerd
+                - nl.vng.gesprekken.gespreksdeelname.aangemaakt
+                - nl.vng.gesprekken.gespreksdeelname.beeindigd
+              description: Soort wijziging; zie de tabel bij `GET /events`.
+            subject:
+              type: string
+              format: uri
+              description: URL van het gesprek waarop het event betrekking heeft.
+              example: "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
+            data:
+              description: >
+                De resource na de wijziging. Welk schema van toepassing is,
+                volgt uit `type`.
+              anyOf:
+                - $ref: '#/components/schemas/Gesprek'
+                - $ref: '#/components/schemas/Gespreksbijdrage'
+                - $ref: '#/components/schemas/GespreksdeelnameEvent'
+                - $ref: '#/components/schemas/GelezenGespreksbijdrage'
+                - $ref: '../../../patterns/event-stream/next.yaml#/schemas/Tombstone'
+                - $ref: '../../../patterns/event-stream/next.yaml#/schemas/Redactie'
+      example:
+        specversion: "1.0"
+        id: "7f3c2a10-5b8e-4d21-9a6f-0c1e2d3f4a5b"
+        source: "https://gesprekken.example.com/api/v1"
+        type: nl.vng.gesprekken.gespreksbijdrage.aangemaakt
+        subject: "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
+        time: "2026-03-11T10:05:00Z"
+        sequence: "18424"
+        datacontenttype: application/json
+        data:
+          uuid: "550e8400-e29b-41d4-a716-446655440001"
+          url: "https://gesprekken.example.com/api/v1/gespreksbijdragen/550e8400-e29b-41d4-a716-446655440001"
+          leveringsmoment: "2026-03-11T10:05:00Z"
+          verzender: "550e8400-e29b-41d4-a716-446655440000"
+          tekstGespreksBijdrage: "Goedemorgen, ik wil graag informatie over de aanvraagprocedure."
+          gesprek: "095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
+          isReactieOp: null
+          bijlagen: []
+
+    GespreksdeelnameEvent:
+      type: object
+      description: >
+        Gespreksdeelname zoals die in events wordt geleverd. Bevat bewust geen
+        `bsn`, `rsin`, `kvkNummer`, `vestigingsnummer` of `emailadres`, omdat
+        alle deelnemers van het gesprek dit event ontvangen.
+      required:
+        - uuid
+        - url
+        - gesprek
+        - type
+        - naam
+        - aanvangsmomentDeelname
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: Unieke systeemidentifier van de gespreksdeelname.
+          example: "550e8400-e29b-41d4-a716-446655440002"
+        url:
+          type: string
+          format: uri
+          description: URL van de gespreksdeelname.
+        gesprek:
+          type: string
+          format: uuid
+          description: UUID van het gesprek waaraan wordt deelgenomen.
+          example: "095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
+        type:
+          type: string
+          enum:
+            - actor
+            - partij
+          description: Of de deelname een Partij of een Actor betreft.
+          example: partij
+        naam:
+          type: string
+          description: Naam van de deelnemer, zoals getoond in het gesprek.
+          example: "Jan Jansen"
+        aanvangsmomentDeelname:
+          type: string
+          format: date-time
+          description: Het moment dat deze deelname is gestart.
+          example: "2026-03-11T10:15:00Z"
+        momentEindeDeelname:
+          type: string
+          format: date-time
+          nullable: true
+          description: Het moment dat de deelname is beëindigd.
+          example: null
 
     # ───── BIJLAGE ─────────────────────────────────────────────────────────
 

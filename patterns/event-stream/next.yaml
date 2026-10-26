@@ -1,0 +1,270 @@
+# Event-Stream Pattern
+# Herbruikbare bouwstenen voor een realtime stroom van wijzigingen via
+# Server-Sent Events: een afnemer haalt een snapshot op en volgt daarna de
+# wijzigingen, met dezelfde cursor als bij een pull-feed.
+#
+# Implementeert: ADR-0002 (levering: snapshot + resumable SSE).
+# De envelop is de CloudEvent uit ADR-0004 (schemas/events/next.json); cursor- en
+# snapshotsemantiek komen uit patterns/sync-feed.
+# Zie ../../architecture/adr/README.md
+
+title: Event-stream (snapshot + SSE)
+description: |
+  Laat een afnemer wijzigingen realtime volgen: eerst de huidige stand via de
+  gewone lees-endpoints, daarna één doorlopende
+  [Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html)-stroom
+  (`GET /events`) met de wijzigingen. Bedoeld voor schermen die live moeten
+  bijwerken (een gesprek, een takenlijst); voor afnemers die een kopie
+  bijhouden is [`patterns/sync-feed`](../sync-feed/next.yaml) de primaire
+  route. Een API mag beide aanbieden: de stroom is dan de push-variant van
+  dezelfde feed.
+
+  **Snapshot + tail.** De afnemer haalt de begintoestand op via de
+  lees-endpoints van de API (lijst, detail of `POST …/zoek`). Elke
+  snapshot-response draagt de header `Feed-Cursor`. Die wordt vastgesteld
+  **vóórdat** de resultaten worden gelezen, net als `feedCursor` in
+  `patterns/sync-feed`; doe je het erna, dan vallen wijzigingen tijdens het
+  lezen tussen wal en schip. Neem de waarde van de eerste response en open
+  daarmee de stroom als `Last-Event-ID`.
+
+  **Formaat.** Elk SSE-bericht heeft drie velden:
+
+  ```
+  id: 18424
+  event: nl.vng.gesprekken.gespreksbijdrage.aangemaakt
+  data: {"specversion":"1.0","id":"7f3c…","type":"nl.vng.gesprekken.gespreksbijdrage.aangemaakt",…}
+  ```
+
+  `id` is de cursor (gelijk aan CloudEvent-`sequence`), `event` is het
+  CloudEvent-`type` en `data` is het volledige CloudEvent als JSON op één
+  regel. Elke 30 seconden zonder events stuurt de server een commentaarregel
+  (`: ping`), zodat proxies de verbinding niet sluiten en de client een dode
+  verbinding herkent.
+
+  **Herverbinden en ontdubbelen.** Bij een verbroken verbinding stuurt de
+  client het laatst ontvangen `id` mee als `Last-Event-ID` (browsers doen dat
+  vanzelf). Levering is at-least-once: de client ontdubbelt op het
+  CloudEvent-`id`. Is de cursor te oud om nog aan te sluiten, dan antwoordt de
+  server `410 Gone`; de client haalt een nieuwe snapshot op en begint opnieuw.
+
+  **Scope.** De stroom bevat alleen events over resources die de aanroeper
+  mag lezen, met dezelfde autorisatieregels als de lees-endpoints. Een API
+  mag een herhaalbare queryparameter aanbieden om de stroom te versmallen tot
+  bepaalde onderwerpen (bijvoorbeeld `?gesprek=…&gesprek=…`). Zo'n filter
+  versmalt alleen; het verruimt nooit wat de aanroeper mag zien, en de cursor
+  blijft geldig als de afnemer zijn filter wijzigt.
+
+  **Type en subject.** `type` volgt de vorm `nl.vng.<api>.<resource>.<actie>`,
+  bijvoorbeeld `nl.vng.gesprekken.gesprek.aangemaakt`. `subject` is altijd de
+  URL van de *onderwerp-resource*: de resource waarop de autorisatie en het
+  filter werken (het gesprek, niet de losse bijdrage). Zo kan een client
+  events groeperen zonder `data` te parsen.
+
+  **Verwijderen en redactie.** Twee acties zijn voor elke resource
+  gereserveerd, met dezelfde betekenis als in `patterns/sync-feed`:
+
+  - `….verwijderd`: de resource bestaat niet meer (bijvoorbeeld na afloop van
+    de bewaartermijn). `data` is een `Tombstone`. Haal de resource uit je
+    kopie en caches.
+  - `….geredigeerd`: als verwijderd, plus: eerdere inhoud is uit de
+    eventhistorie verwijderd, omdat die er niet had mogen staan. `data` is een
+    `Redactie` met de geredigeerde cursors. Een client die die events eerder
+    ontving, verwijdert de inhoud ook uit zijn eigen opslag en afgeleide
+    producten. Dit is het antwoord op het AVG-bezwaar tegen een append-only
+    log uit ADR-0002.
+
+  **Privacy.** Iedereen die het onderwerp mag lezen, ontvangt hetzelfde
+  event. Neem in `data` daarom niets op wat niet al die ontvangers mogen zien,
+  zoals BSN, e-mailadres of andere identificerende gegevens van een
+  deelnemer. Wie meer mag zien, haalt dat op via de REST-endpoints, die per
+  aanroeper autoriseren.
+
+  **Authenticatie.** De stroom gebruikt de authenticatie van de API, net
+  als de andere operaties. De standaard `EventSource` in de browser kan
+  geen eigen headers meesturen (zoals `Authorization`); clients gebruiken
+  daarom SSE via `fetch` (een streamende response lezen), zodat de
+  headers die de API vraagt mee kunnen. Zet een token nooit in de
+  querystring: die belandt in logs en browsergeschiedenis. Een token kan
+  tijdens de stroom verlopen: de server sluit de stroom dan, en de client
+  verbindt opnieuw met een nieuw token en het laatste `id` als
+  `Last-Event-ID`. Zo gaat er niets verloren.
+
+  **Schrijven en optionaliteit.** De stroom is alleen-lezen; schrijven gaat
+  via de gewone REST-operaties. Een implementatie zonder stroom blijft een
+  geldige implementatie van de API: clients vallen dan terug op periodiek
+  opnieuw ophalen.
+
+  **Hoe te gebruiken.** Neem `EventBasis` op met `allOf` en vul `type` en
+  `data` aan voor het eigen domein; verwijs naar de parameter, header en
+  response:
+
+  ```yaml
+  paths:
+    /events:
+      get:
+        parameters:
+          - $ref: "../../patterns/event-stream/next.yaml#/parameters/LastEventId"
+        responses:
+          "200":
+            content:
+              text/event-stream:
+                schema:
+                  $ref: "#/components/schemas/MijnEvent"
+          "410":
+            $ref: "../../patterns/event-stream/next.yaml#/responses/CursorVerlopen"
+  components:
+    schemas:
+      MijnEvent:
+        allOf:
+          - $ref: "../../patterns/event-stream/next.yaml#/schemas/EventBasis"
+          - type: object
+            properties:
+              type:
+                enum: [nl.vng.mijnapi.zaak.aangemaakt, nl.vng.mijnapi.zaak.verwijderd]
+              data:
+                anyOf:
+                  - $ref: "#/components/schemas/Zaak"
+                  - $ref: "../../patterns/event-stream/next.yaml#/schemas/Tombstone"
+  ```
+
+  Zet `Feed-Cursor` op de 200-response van elk snapshot-endpoint:
+
+  ```yaml
+  headers:
+    Feed-Cursor:
+      $ref: "../../patterns/event-stream/next.yaml#/headers/FeedCursor"
+  ```
+
+parameters:
+  LastEventId:
+    name: Last-Event-ID
+    in: header
+    required: false
+    description: |
+      Cursor vanaf waar events worden geleverd: de `Feed-Cursor` uit een
+      snapshot-response, of het laatst ontvangen SSE-`id` bij opnieuw
+      verbinden. Zonder deze header levert de server alleen nieuwe events.
+      Opaak: bewaren en meegeven, niet interpreteren.
+    schema:
+      type: string
+    example: "18423"
+
+headers:
+  FeedCursor:
+    description: |
+      Opake positie in de eventstroom, vastgesteld vóórdat de resultaten van
+      deze response zijn gelezen. Geef de waarde van de eerste
+      snapshot-response mee als `Last-Event-ID` aan `GET /events` om alle
+      wijzigingen daarna te ontvangen, zonder gat. Zelfde semantiek als
+      `feedCursor` in `patterns/sync-feed`.
+    schema:
+      type: string
+    example: "18423"
+
+responses:
+  CursorVerlopen:
+    description: |
+      De opgegeven cursor is te oud; de events daarna zijn niet meer
+      beschikbaar. Haal een nieuwe snapshot op en verbind opnieuw met de
+      nieuwe `Feed-Cursor`.
+    content:
+      application/problem+json:
+        schema:
+          $ref: "../../schemas/fout/v0.0.1.json#/$defs/Fout"
+
+schemas:
+  EventBasis:
+    description: |
+      Een wijziging als CloudEvent 1.0 (JSON-formaat), geleverd als `data` van
+      een SSE-bericht. Vul aan met `type` (de eventtypes van het eigen domein)
+      en `data` (de resource na de wijziging, een `Tombstone` of een
+      `Redactie`).
+    allOf:
+      - $ref: "../../schemas/events/next.json#/$defs/CloudEvent"
+      - type: object
+        required:
+          - specversion
+          - id
+          - source
+          - type
+          - subject
+          - time
+          - sequence
+          - data
+        properties:
+          specversion:
+            type: string
+            enum:
+              - "1.0"
+          id:
+            type: string
+            description: Unieke identificatie van het event (per `source`). Clients ontdubbelen hierop.
+            example: "7f3c2a10-5b8e-4d21-9a6f-0c1e2d3f4a5b"
+          source:
+            type: string
+            format: uri-reference
+            description: De bron (API-instantie) die het event heeft uitgegeven.
+            example: "https://gesprekken.example.com/api/v1"
+          type:
+            type: string
+            description: "Soort wijziging, in de vorm `nl.vng.<api>.<resource>.<actie>`."
+            example: nl.vng.gesprekken.gesprek.aangemaakt
+          subject:
+            type: string
+            format: uri
+            description: URL van de onderwerp-resource waarop autorisatie en filter werken.
+          time:
+            type: string
+            format: date-time
+            description: Moment van de wijziging.
+            example: "2026-03-11T10:05:00Z"
+          sequence:
+            type: string
+            description: Positie in de stroom, gelijk aan het SSE-`id`. Bruikbaar als `Last-Event-ID`.
+            example: "18424"
+          datacontenttype:
+            type: string
+            example: application/json
+          data:
+            description: De resource na de wijziging, een `Tombstone` of een `Redactie`.
+
+  Tombstone:
+    type: object
+    description: |
+      Restant van een verwijderde resource: alleen de identificatie, zodat
+      clients hun lokale kopie kunnen opruimen.
+    required:
+      - url
+    properties:
+      uuid:
+        type: string
+        format: uuid
+        description: UUID van de verwijderde resource, als het domein die kent.
+      url:
+        type: string
+        format: uri
+        description: URL van de verwijderde resource.
+
+  Redactie:
+    type: object
+    description: |
+      Melding dat eerdere inhoud uit de eventhistorie is verwijderd. Verwijder
+      de resource en de inhoud van de genoemde events uit je eigen opslag,
+      caches en afgeleide producten.
+    required:
+      - url
+      - geredigeerdeSequences
+    properties:
+      url:
+        type: string
+        format: uri
+        description: URL van de resource waarvan inhoud is geredigeerd.
+      geredigeerdeSequences:
+        type: array
+        description: |
+          De `sequence`-waarden van de events waarvan de inhoud uit de
+          historie is verwijderd. Dit zijn de enige toegestane gaten in de
+          stroom.
+        items:
+          type: string
+        example: ["18401", "18424"]
