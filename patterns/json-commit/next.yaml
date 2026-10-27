@@ -122,6 +122,18 @@ description: |
   event, so it is a pseudonymous or organizational identifier, never a BSN,
   an e-mail address or another personal identifier.
 
+  **Privacy.** The same rule holds for the content: a commit contains
+  nothing that some reader of the `subject` may not see, as in the privacy
+  section of [`patterns/event-stream`](../event-stream/next.yaml). This is
+  solved in the data model, not with a separate kind of event. Resources
+  refer to people instead of embedding them: a role points to a party (for
+  example a URN in Open Klant) instead of carrying a BSN or name. Events stay
+  complete; only personal data becomes a reference, like the case type
+  already is. A consumer that needs the person's details fetches them from the
+  party register, which authorizes each caller, and can cache them. Changes
+  to a person then live in one place, and old events hold no personal data
+  that later has to be removed.
+
   **What consumers see.** Every accepted commit appears on the register's
   event stream (`GET /events`, see `patterns/event-stream`) or feed as one
   `json.commit` CloudEvent: the commit as sent, plus `actor` and `timestamp`
@@ -304,9 +316,8 @@ examples:
               zaak: "urn:uuid:8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d"
               roltype: "https://catalogi.example.nl/api/v1/roltypen/2c3d4e5f-6071-4829-8b3c-4d5e6f708192"
               betrokkeneType: natuurlijk_persoon
+              betrokkene: "urn:nl:openklant:partij:5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b"
               roltoelichting: "Aanvrager"
-              betrokkeneIdentificatie:
-                inpBsn: "999993653"
           - resourceId: "urn:uuid:1d2e3f4a-5b6c-4d8e-8f9a-0b1c2d3e4f50"
             schema: "https://zaken.example.nl/schemas/ZaakInformatieObject"
             resourceData:
@@ -361,9 +372,8 @@ examples:
               zaak: "urn:uuid:4f5e6d7c-8b9a-4c0d-9e1f-2a3b4c5d6e7f"
               roltype: "https://catalogi.example.nl/api/v1/roltypen/60718293-a4b5-4c6d-8f70-8192a3b4c5d6"
               betrokkeneType: medewerker
+              betrokkene: "urn:nl:gemeente:medewerker:1f2e3d4c-5b6a-4978-8695-a4b3c2d1e0f9"
               roltoelichting: "Behandelaar"
-              betrokkeneIdentificatie:
-                identificatie: "m.jansen"
   RegisterCaseResult:
     summary: "201: all commits applied"
     description: Shortened to the first two events; the others follow the same shape.
