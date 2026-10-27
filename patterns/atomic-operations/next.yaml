@@ -1,0 +1,411 @@
+# Herkomst: voorstel uit het lab (issue #48), geen onderliggend
+# architectuurbesluit. Vorm ontleend aan JSON:API Atomic Operations en
+# OData `$batch`-changesets; praktijkvoorlopers zijn de handelingsendpoints in
+# Open Zaak (`zaak_registreren`) en het convenience-endpoint in Open Klant.
+# Zie ../../architecture/adr/README.md
+title: Atomaire operaties (transacties)
+description: |
+  Meerdere wijzigingen binnen één register in één request: alles slaagt, of er
+  verandert niets.
+
+  **Het probleem.** Een zaak aanmaken is in ZGW al snel vier of meer calls:
+  zaak, status, rol, koppeling met een document. Faalt de derde, dan blijft er
+  een zaak zonder initiator achter die andere systemen niet kunnen behandelen,
+  en moet de client zelf uitzoeken wat er wel en niet is gelukt.
+
+  **De oplossing.** Het register biedt naast zijn gewone resources één extra
+  endpoint, `POST /transacties`. Het verzoek bevat een lijst `operaties` op
+  diezelfde resources, in dezelfde vorm als de gewone endpoints. Er komt geen
+  nieuw datamodel bij.
+
+  ```
+  POST /transacties
+  Idempotency-Key: 0f8a2c4e-5b1d-4e9a-9c3f-7d6b2a1e8f40
+
+  { "operaties": [
+      { "op": "add", "type": "zaak",   "lid": "z1", "data": { ... } },
+      { "op": "add", "type": "status", "data": { "zaak": { "lid": "z1" }, ... } } ] }
+  ```
+
+  **Garanties.** Een implementatie van dit patroon belooft:
+
+  1. **Alles of niets.** Alle operaties worden in één transactie toegepast.
+     Faalt er één, dan is er niets opgeslagen.
+  2. **Eerst valideren, dan toepassen.** Schema, businessregels en autorisatie
+     worden per operatie gecontroleerd voordat er iets wordt geschreven. Het
+     antwoord op een fout noemt álle gevonden fouten, niet alleen de eerste.
+  3. **Volgorde.** Operaties worden in de gegeven volgorde uitgevoerd. Een
+     `lid` mag alleen verwijzen naar een operatie die eerder in de lijst staat.
+  4. **Geen spook-events.** Notificaties, CloudEvents en feedrecords
+     (`patterns/sync-feed`) worden via een outbox in dezelfde transactie
+     vastgelegd. Na een afwijzing verschijnt er dus ook niets op een feed. Elk
+     event draagt het `transactie`-id, zodat een afnemer ziet welke wijzigingen
+     bij elkaar horen en ze samen kan toepassen.
+  5. **Idempotent.** De header `Idempotency-Key` is verplicht. Het register
+     bewaart de uitkomst onder die sleutel, óók een afwijzing. Een herhaling met
+     dezelfde sleutel en dezelfde body geeft hetzelfde antwoord terug zonder
+     opnieuw uit te voeren; met een andere body volgt `409`.
+
+  **Operaties.**
+
+  - `add`: maak een resource aan. `data` is wat je anders naar
+    `POST /{type}en` zou sturen. Geef een `lid` (lokale id) mee als een latere
+    operatie ernaar moet verwijzen.
+  - `update`: wijzig een bestaande resource. `ref` wijst hem aan, `data` is
+    een JSON Merge Patch (RFC 7396), net als `patch` in een JSONCommit
+    (`schemas/events`).
+  - `remove`: verwijder een bestaande resource, aangewezen met `ref`.
+
+  Overal waar een gewone request-body een URL naar een resource verwacht, mag
+  binnen een transactie `{ "lid": "z1" }` staan. Het register vervangt die door
+  de echte URL. In het antwoord staat per `lid` welke URL het heeft gekregen.
+
+  **Grens: één register.** Een transactie raakt alleen resources van het
+  register dat haar ontvangt. Verwijzen naar resources in een ander register
+  mag (het register leest die om te valideren), schrijven niet. Voor een zaak
+  met document betekent dat: eerst het document uploaden volgens
+  [`patterns/file-upload`](../file-upload/next.yaml), daarna in één transactie
+  bij het zakenregister de zaak aanmaken én koppelen. Mislukt die transactie,
+  dan blijft er alleen een ongekoppeld document over dat volgens zijn
+  bewaartermijn verloopt. Tussen registers geldt verder at-least-once levering
+  met idempotente ontvangers, geen gedistribueerde transactie.
+
+  **Handelingen.** Het optionele veld `handeling` geeft een transactie een
+  naam, bijvoorbeeld `zaak-registreren`. Het register controleert dan
+  aanvullend of de operaties aan het profiel van die handeling voldoen
+  (precies één zaak, een beginstatus, een initiator) en publiceert naast de
+  losse resource-events één business event met die naam. Een nieuwe handeling
+  kost zo een profiel, geen nieuw endpoint. Zonder `handeling` werkt elke
+  combinatie, alleen zonder die extra controle en dat event.
+
+  **Hoe te gebruiken.** Dit patroon is domeinonafhankelijk. Een register
+  neemt `TransactieVerzoek` en `Operatie` op en beperkt `type` tot zijn eigen
+  resources:
+
+  ```yaml
+  ZakenOperatie:
+    allOf:
+      - $ref: "../../patterns/atomic-operations/next.yaml#/schemas/Operatie"
+      - type: object
+        properties:
+          type:
+            enum: [zaak, status, rol, resultaat, zaakobject, zaakinformatieobject]
+  ```
+
+parameters:
+  IdempotencyKey:
+    name: Idempotency-Key
+    in: header
+    required: true
+    description: |
+      Door de client gekozen unieke sleutel voor deze transactie, bij voorkeur
+      een UUID. Bij een time-out of netwerkfout stuurt de client hetzelfde
+      verzoek opnieuw met dezelfde sleutel; het register voert het hoogstens
+      één keer uit. Na het herstellen van een `422` hoort een nieuwe sleutel.
+      Zie draft-ietf-httpapi-idempotency-key-header.
+    schema:
+      type: string
+      maxLength: 255
+    example: "0f8a2c4e-5b1d-4e9a-9c3f-7d6b2a1e8f40"
+
+headers:
+  IdempotentReplayed:
+    description: "`true` als dit antwoord een herhaling is van een eerder uitgevoerd verzoek met dezelfde `Idempotency-Key`."
+    schema:
+      type: boolean
+
+schemas:
+  Lid:
+    type: string
+    pattern: "^[A-Za-z0-9_-]{1,64}$"
+    description: Lokale id, alleen geldig binnen deze transactie.
+    example: z1
+  LidVerwijzing:
+    type: object
+    description: Verwijzing naar een resource die eerder in dezelfde transactie is aangemaakt. Mag staan waar normaal een URL staat.
+    required:
+      - lid
+    properties:
+      lid:
+        $ref: "#/schemas/Lid"
+    additionalProperties: false
+  Operatie:
+    type: object
+    required:
+      - op
+      - type
+    properties:
+      op:
+        type: string
+        enum:
+          - add
+          - update
+          - remove
+      type:
+        type: string
+        description: Het resourcetype binnen het register. De implementerende API beperkt dit met een `enum`.
+        example: zaak
+      lid:
+        $ref: "#/schemas/Lid"
+      ref:
+        type: string
+        format: uri
+        description: URL of URN van een bestaande resource. Verplicht bij `update` en `remove`.
+      data:
+        type: object
+        description: |
+          Bij `add` de volledige request-body van het gewone create-endpoint,
+          bij `update` een JSON Merge Patch. Ontbreekt bij `remove`.
+    allOf:
+      - if:
+          properties:
+            op:
+              const: add
+        then:
+          required: [data]
+          not:
+            required: [ref]
+      - if:
+          properties:
+            op:
+              const: update
+        then:
+          required: [ref, data]
+      - if:
+          properties:
+            op:
+              const: remove
+        then:
+          required: [ref]
+          not:
+            anyOf:
+              - required: [data]
+              - required: [lid]
+  TransactieVerzoek:
+    type: object
+    required:
+      - operaties
+    properties:
+      handeling:
+        type: string
+        description: Optionele naam van een handeling. Het register valideert de operaties dan tegen het profiel van die handeling en publiceert een business event met deze naam.
+        example: zaak-registreren
+      operaties:
+        type: array
+        minItems: 1
+        maxItems: 100
+        items:
+          $ref: "#/schemas/Operatie"
+  OperatieResultaat:
+    type: object
+    required:
+      - index
+      - type
+    properties:
+      index:
+        type: integer
+        description: Positie van de operatie in het verzoek, vanaf 0.
+      lid:
+        $ref: "#/schemas/Lid"
+      type:
+        type: string
+      url:
+        type: string
+        format: uri
+        description: URL van de aangemaakte of gewijzigde resource. Ontbreekt bij `remove`.
+  TransactieResultaat:
+    type: object
+    required:
+      - transactie
+      - resultaten
+    properties:
+      transactie:
+        type: string
+        description: Door het register toegekend id. Staat ook op alle events en feedrecords die uit deze transactie voortkomen.
+        example: "urn:uuid:6c1e8f3a-2b4d-4a7e-9f10-3c5d7e9a1b2c"
+      handeling:
+        type: string
+      resultaten:
+        type: array
+        description: Eén resultaat per operatie, in dezelfde volgorde als het verzoek.
+        items:
+          $ref: "#/schemas/OperatieResultaat"
+  TransactieFout:
+    description: |
+      Problem Details (`schemas/fout`) aangevuld met `invalidParams`, zoals in
+      de ZGW-API's. `name` is een JSON Pointer naar het veld in het verzoek,
+      zodat de client per operatie ziet wat er mis is.
+    allOf:
+      - $ref: "../../schemas/fout/v0.0.1.json#/$defs/Fout"
+      - type: object
+        properties:
+          invalidParams:
+            type: array
+            items:
+              type: object
+              required: [name, code, reason]
+              properties:
+                name:
+                  type: string
+                  description: JSON Pointer in het verzoek, bijvoorbeeld `/operaties/1/data/statustype`.
+                code:
+                  type: string
+                reason:
+                  type: string
+
+examples:
+  ZaakRegistreren:
+    summary: Zaak registreren met status, initiator en een al geüpload document
+    description: |
+      Het document is eerst bij het documentenregister geüpload
+      (`patterns/file-upload`) en heeft daar zijn URL gekregen. Deze
+      transactie maakt de zaak en legt de koppeling, atomair, bij het
+      zakenregister.
+    value:
+      handeling: zaak-registreren
+      operaties:
+        - op: add
+          type: zaak
+          lid: z1
+          data:
+            bronorganisatie: "002220647"
+            verantwoordelijkeOrganisatie: "002220647"
+            zaaktype: "https://catalogi.example.nl/api/v1/zaaktypen/7a3e2b1c-0d4f-4e5a-8b6c-9d0e1f2a3b4c"
+            omschrijving: "Aanvraag parkeervergunning"
+            startdatum: "2026-10-27"
+        - op: add
+          type: status
+          data:
+            zaak: { lid: z1 }
+            statustype: "https://catalogi.example.nl/api/v1/statustypen/1b2c3d4e-5f60-4718-9a2b-3c4d5e6f7081"
+            datumStatusGezet: "2026-10-27T10:00:00Z"
+        - op: add
+          type: rol
+          data:
+            zaak: { lid: z1 }
+            roltype: "https://catalogi.example.nl/api/v1/roltypen/2c3d4e5f-6071-4829-8b3c-4d5e6f708192"
+            betrokkeneType: natuurlijk_persoon
+            roltoelichting: "Aanvrager"
+            betrokkeneIdentificatie:
+              inpBsn: "999993653"
+        - op: add
+          type: zaakinformatieobject
+          data:
+            zaak: { lid: z1 }
+            informatieobject: "https://documenten.example.nl/api/v1/enkelvoudiginformatieobjecten/d1a2b3c4-d5e6-4f70-8192-a3b4c5d6e7f8"
+            titel: "Aanvraagformulier"
+  ZaakAfsluiten:
+    summary: Zaak afsluiten met resultaat, eindstatus en toelichting
+    description: |
+      Drie wijzigingen die alleen samen kloppen: zonder resultaat mag de
+      eindstatus niet gezet worden, en de toelichting hoort bij het afsluiten.
+    value:
+      handeling: zaak-afsluiten
+      operaties:
+        - op: add
+          type: resultaat
+          data:
+            zaak: "https://zaken.example.nl/api/v1/zaken/4f5e6d7c-8b9a-4c0d-9e1f-2a3b4c5d6e7f"
+            resultaattype: "https://catalogi.example.nl/api/v1/resultaattypen/3d4e5f60-7182-493a-9c4d-5e6f708192a3"
+        - op: add
+          type: status
+          data:
+            zaak: "https://zaken.example.nl/api/v1/zaken/4f5e6d7c-8b9a-4c0d-9e1f-2a3b4c5d6e7f"
+            statustype: "https://catalogi.example.nl/api/v1/statustypen/4e5f6071-8293-4a4b-8d5e-6f708192a3b4"
+            datumStatusGezet: "2026-11-03T16:30:00Z"
+        - op: update
+          type: zaak
+          ref: "https://zaken.example.nl/api/v1/zaken/4f5e6d7c-8b9a-4c0d-9e1f-2a3b4c5d6e7f"
+          data:
+            toelichting: "Vergunning verleend"
+  BehandelaarWisselen:
+    summary: Behandelaar vervangen, zonder handeling
+    description: |
+      Een losse combinatie zonder naam: oude rol weg, nieuwe erbij. Er is
+      nooit een moment waarop de zaak geen behandelaar heeft.
+    value:
+      operaties:
+        - op: remove
+          type: rol
+          ref: "https://zaken.example.nl/api/v1/rollen/5f607182-93a4-4b5c-9e6f-708192a3b4c5"
+        - op: add
+          type: rol
+          data:
+            zaak: "https://zaken.example.nl/api/v1/zaken/4f5e6d7c-8b9a-4c0d-9e1f-2a3b4c5d6e7f"
+            roltype: "https://catalogi.example.nl/api/v1/roltypen/60718293-a4b5-4c6d-8f70-8192a3b4c5d6"
+            betrokkeneType: medewerker
+            roltoelichting: "Behandelaar"
+            betrokkeneIdentificatie:
+              identificatie: "m.jansen"
+  ZaakRegistrerenResultaat:
+    summary: "201: alle operaties toegepast"
+    value:
+      transactie: "urn:uuid:6c1e8f3a-2b4d-4a7e-9f10-3c5d7e9a1b2c"
+      handeling: zaak-registreren
+      resultaten:
+        - index: 0
+          lid: z1
+          type: zaak
+          url: "https://zaken.example.nl/api/v1/zaken/8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d"
+        - index: 1
+          type: status
+          url: "https://zaken.example.nl/api/v1/statussen/9b0c1d2e-3f4a-4b6c-8d7e-8f9a0b1c2d3e"
+        - index: 2
+          type: rol
+          url: "https://zaken.example.nl/api/v1/rollen/0c1d2e3f-4a5b-4c7d-9e8f-9a0b1c2d3e4f"
+        - index: 3
+          type: zaakinformatieobject
+          url: "https://zaken.example.nl/api/v1/zaakinformatieobjecten/1d2e3f4a-5b6c-4d8e-8f9a-0b1c2d3e4f50"
+  ZaakRegistrerenAfgewezen:
+    summary: "422: afgewezen, er is niets opgeslagen"
+    description: Alle gevonden fouten, elk met een JSON Pointer naar de operatie in het verzoek.
+    value:
+      type: "https://vng.nl/problemen/transactie-afgewezen"
+      title: "Transactie afgewezen; er is niets opgeslagen."
+      status: 422
+      instance: "urn:uuid:7d2f9a4b-3c5e-4b8f-8a21-4d6e8f0b2c3d"
+      invalidParams:
+        - name: "/operaties/1/data/statustype"
+          code: statustype-hoort-niet-bij-zaaktype
+          reason: "Het statustype hoort niet bij het zaaktype van zaak z1."
+        - name: "/operaties/3/data/informatieobject"
+          code: informatieobject-niet-beschikbaar
+          reason: "Het document heeft status uploadInAfwachting; wacht tot de upload is bevestigd."
+  SleutelHergebruikt:
+    summary: "409: Idempotency-Key al gebruikt voor een ander verzoek"
+    value:
+      type: "https://vng.nl/problemen/idempotency-key-hergebruikt"
+      title: "Deze Idempotency-Key is al gebruikt voor een verzoek met een andere inhoud."
+      status: 409
+
+responses:
+  TransactieToegepast:
+    description: Alle operaties zijn toegepast.
+    headers:
+      Idempotent-Replayed:
+        $ref: "#/headers/IdempotentReplayed"
+    content:
+      application/json:
+        schema:
+          $ref: "#/schemas/TransactieResultaat"
+        examples:
+          ZaakRegistreren:
+            $ref: "#/examples/ZaakRegistrerenResultaat"
+  TransactieAfgewezen:
+    description: Eén of meer operaties zijn ongeldig. Er is niets opgeslagen en niets gepubliceerd.
+    content:
+      application/problem+json:
+        schema:
+          $ref: "#/schemas/TransactieFout"
+        examples:
+          ZaakRegistreren:
+            $ref: "#/examples/ZaakRegistrerenAfgewezen"
+  SleutelConflict:
+    description: De `Idempotency-Key` is eerder gebruikt met een andere body.
+    content:
+      application/problem+json:
+        schema:
+          $ref: "../../schemas/fout/v0.0.1.json#/$defs/Fout"
+        examples:
+          SleutelHergebruikt:
+            $ref: "#/examples/SleutelHergebruikt"

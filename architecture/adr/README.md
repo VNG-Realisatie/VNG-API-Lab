@@ -37,6 +37,7 @@ zijn overgenomen uit bestaande conventies:
 | [`patterns/pagination`](../../patterns/pagination/0.0.1.yaml) | ZGW-conventie (`page`/`pageSize`/`count`) | ADR-0003 schrijft cursor-paginering voor; voor endpoints waar een afnemer een kopie bijhoudt geldt [`patterns/sync-feed`](../../patterns/sync-feed/next.yaml) |
 | [`patterns/error-responses`](../../patterns/error-responses/v0.0.1.yaml) | Landelijke API-strategie | Verwijst nog naar RFC 7807; actueel is RFC 9457 (zie [`apis/FEEDBACK.md`](../../apis/FEEDBACK.md), rode draad 4) |
 | [`patterns/file-upload`](../../patterns/file-upload/next.yaml) | Two-step pre-signed upload, praktijkpatroon | — |
+| [`patterns/atomic-operations`](../../patterns/atomic-operations/next.yaml) | Voorstel uit issue #48; vorm van JSON:API Atomic Operations | Atomair binnen één register; tussen registers geldt at-least-once + idempotent. Kandidaat voor een eigen ADR |
 
 ## Conventie: ADR ↔ patroon
 
