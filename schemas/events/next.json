@@ -162,7 +162,7 @@
           "minLength": 1
         },
         "schema": {
-          "description": "The JSON Schema that describes the resource: preferably its URI, or a short name (such as \"Comment\") that the receiver resolves to a URI, for example via /schemas/{name}.",
+          "description": "The JSON Schema that describes the resource: preferably its URI, with the version in it (for example .../Zaak/v2) so that old commits stay interpretable, or a short name (such as \"Comment\") that the receiver resolves to such a URI, for example via /schemas/{name}.",
           "type": "string",
           "minLength": 1
         },
@@ -171,12 +171,17 @@
           "type": "object"
         },
         "patch": {
-          "description": "JSON Merge Patch (RFC 7396) applied to the existing resource. `null` removes a field.",
+          "description": "JSON Merge Patch (RFC 7396) applied to the existing resource. `null` removes a field (a field cannot be set to the value null), and an array is always replaced as a whole.",
           "type": "object"
         },
         "deleted": {
           "description": "`true` deletes the resource.",
           "const": true
+        },
+        "previousCommit": {
+          "description": "Optional concurrency check: the id of the last commit applied to this resource, as the client saw it on the stream (the `id` of that `json.commit` event). If the resource has moved on since, the receiver refuses the whole transaction with `412`. Absent means no check: the last write wins.",
+          "type": "string",
+          "minLength": 1
         },
         "actor": {
           "description": "Who made the change. Set by the receiver from the authenticated identity; a value sent by a client is ignored. Everyone who may read the subject sees it, so it is a pseudonymous or organizational identifier, never a BSN, e-mail address or other personal identifier.",

@@ -8,8 +8,9 @@ description: |
   Several changes to one register in one request: all of them are applied, or
   none is. The request uses the same format as the register's outgoing event
   stream: CloudEvents carrying JSONCommits
-  ([`schemas/events`](../../schemas/events/next.json)). What a client sends is
-  what consumers receive once it is accepted.
+  ([`schemas/events`](../../schemas/events/next.json)). What a client sends is,
+  once accepted, what consumers receive, completed with any fields the
+  register derived.
 
   This pattern is domain-independent. The examples use ZGW cases (`zaak`,
   `status`, `rol`) only to make it concrete.
@@ -63,6 +64,16 @@ description: |
   - `patch`: update an existing resource with a JSON Merge Patch (RFC 7396).
   - `deleted: true`: delete the resource.
 
+  Two properties of Merge Patch to keep in mind: `null` removes a field (a
+  field cannot be set to the value null), and an array is always replaced as
+  a whole. Collections that several people edit at the same time are
+  therefore modelled as resources of their own, as ZGW already does with
+  roles and statuses. Combined with `previousCommit` (below), replacing a
+  whole array is safe.
+
+  **Schema versions.** Put the version in the `schema` URI (`…/Zaak/v2`), so
+  that old commits on the stream stay interpretable after the schema changes.
+
   **Identity.** The client chooses `resourceId` for new resources (a URN or a
   UUID). Commits refer to each other with those ids, also within the same
   transaction, so there is no need for temporary local ids or for a round trip
@@ -91,6 +102,18 @@ description: |
      a rejection. The same key with the same body returns the stored response
      with `Idempotent-Replayed: true`; the same key with a different body
      returns `409`.
+  6. **No lost updates.** A commit may carry `previousCommit`: the id of the
+     last commit applied to that resource, as the client saw it on the
+     stream. If the resource has moved on since, the whole transaction is
+     refused with `412`, with a pointer to the stale commit (code `stale`).
+     The client reads the newer state and tries again. Without
+     `previousCommit` there is no check and the last write wins.
+  7. **The stored commit is the real change.** When the receiver derives
+     fields while applying a commit (an `einddatum` set by a final status, a
+     generated `identificatie`), it adds them to the stored commit's `patch`
+     or `resourceData`. The commit on the stream is then the change as it was
+     applied, not only the input, and a consumer that replays the stream ends
+     up with the same state as the register.
 
   **Authorization.** Checks run in this order, so that a refusal reveals
   nothing:
@@ -136,7 +159,7 @@ description: |
 
   **What consumers see.** Every accepted commit appears on the register's
   event stream (`GET /events`, see `patterns/event-stream`) or feed as one
-  `json.commit` CloudEvent: the commit as sent, plus `actor` and `timestamp`
+  `json.commit` CloudEvent: the commit as applied (guarantee 7), plus `actor` and `timestamp`
   in the commit and `time`, `sequence` and the extension attribute
   `transactionid` on the envelope. All events from one transaction share the
   same `transactionid`, so a consumer can apply them together.
@@ -151,6 +174,17 @@ description: |
   **Event types.** The only generic types are `json.commit` and
   `json.commit.transaction`. Reverse-DNS types are reserved for typed
   profiles and for domain events.
+
+  **Commits and domain events.** `json.commit` is the change log: what
+  changed in which resource. A domain event (such as
+  `nl.vng.gesprekken.gesprek.beeindigd` in `patterns/event-stream`) carries
+  meaning: what happened. Both may appear side by side on the same stream. A
+  consumer that keeps a copy follows the commits; a consumer that reacts to
+  what happened follows the domain events. A typed transaction can produce
+  both: its commits, and one domain event with the profile's name.
+
+  **Signing.** A signature, where needed (ADR-0004), belongs on the transport
+  layer as a JWS over the whole CloudEvent, not in the commit format.
 
   **Typed transactions.** A transaction may name a profile: set `type` to a
   reverse-DNS name (for example `nl.vng.zaken.zaak-registreren.v1`) and
@@ -210,6 +244,8 @@ description: |
           $ref: "../../patterns/json-commit/next.yaml#/responses/NotAuthorized"
         "409":
           $ref: "../../patterns/json-commit/next.yaml#/responses/IdConflict"
+        "412":
+          $ref: "../../patterns/json-commit/next.yaml#/responses/PreconditionFailed"
         "422":
           $ref: "../../patterns/json-commit/next.yaml#/responses/TransactionRejected"
   ```
@@ -349,6 +385,7 @@ examples:
               datumStatusGezet: "2026-11-03T16:30:00Z"
           - resourceId: "urn:uuid:4f5e6d7c-8b9a-4c0d-9e1f-2a3b4c5d6e7f"
             schema: "https://zaken.example.nl/schemas/Zaak"
+            previousCommit: "01JBR8Z4K7Q2W9E5T1Y3U6I8O0"
             patch:
               toelichting: "Vergunning verleend"
   ReplaceAssignee:
@@ -439,6 +476,20 @@ examples:
         - name: "/data/commits/2/resourceData/zaak"
           code: subject-mismatch
           reason: "This resource does not belong to the subject of the request."
+  StaleCommit:
+    summary: "412: the case changed since the client last saw it"
+    description: |
+      Someone else changed the case after the commit named in
+      `previousCommit`. Nothing was stored; the client reads the current state
+      and tries again.
+    value:
+      type: "https://example.org/problems/stale-commit"
+      title: "A resource changed since the given previousCommit; nothing was stored."
+      status: 412
+      invalidParams:
+        - name: "/data/commits/2/previousCommit"
+          code: stale
+          reason: "The last commit on this resource is 01JBR9A2M5R7T9V1X3Z5B7D9F1, not 01JBR8Z4K7Q2W9E5T1Y3U6I8O0."
   NotAuthorizedExample:
     summary: "403: one refusal for the whole transaction"
     description: |
@@ -496,6 +547,17 @@ responses:
         examples:
           NotAuthorized:
             $ref: "#/examples/NotAuthorizedExample"
+  PreconditionFailed:
+    description: |
+      A commit's `previousCommit` is no longer the last commit on that
+      resource. Nothing was stored or published.
+    content:
+      application/problem+json:
+        schema:
+          $ref: "#/schemas/TransactionError"
+        examples:
+          StaleCommit:
+            $ref: "#/examples/StaleCommit"
   IdConflict:
     description: This client used the same CloudEvent `source` and `id` before with a different body.
     content:
