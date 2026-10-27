@@ -1,0 +1,357 @@
+# Origin: lab proposal (issue #48), no underlying architecture decision yet.
+# Builds on JSONCommit and the CloudEvents envelope in schemas/events, which
+# the zaakchat event stream already uses for outgoing changes. Related prior
+# art: JSON:API Atomic Operations, OData `$batch` change sets.
+# See ../../architecture/adr/README.md
+title: JSON Commit transactions
+description: |
+  Several changes to one register in one request: all of them are applied, or
+  none is. The request uses the same format as the register's outgoing event
+  stream: CloudEvents carrying JSONCommits
+  ([`schemas/events`](../../schemas/events/next.json)). What a client sends is
+  what consumers receive once it is accepted.
+
+  This pattern is domain-independent. The examples use ZGW cases (`zaak`,
+  `status`, `rol`) only to make it concrete.
+
+  **Request.** One CloudEvent, posted in structured mode, whose `data` holds a
+  list of `commits`:
+
+  ```
+  POST /transactions
+  Content-Type: application/cloudevents+json
+
+  { "specversion": "1.0",
+    "id": "0f8a2c4e-5b1d-4e9a-9c3f-7d6b2a1e8f40",
+    "source": "https://portal.example.org",
+    "type": "json.commit.transaction",
+    "data": { "commits": [
+      { "resourceId": "urn:uuid:8a9b…", "schema": "https://…/Zaak",   "resourceData": { … } },
+      { "resourceId": "urn:uuid:9b0c…", "schema": "https://…/Status", "resourceData": { "zaak": "urn:uuid:8a9b…", … } } ] } }
+  ```
+
+  Each commit is exactly one of:
+
+  - `resourceData`: create the resource with this content.
+  - `patch`: update an existing resource with a JSON Merge Patch (RFC 7396).
+  - `deleted: true`: delete the resource.
+
+  **Identity.** The client chooses `resourceId` for new resources (a URN or a
+  UUID). Commits refer to each other with those ids, also within the same
+  transaction, so there is no need for temporary local ids or for a round trip
+  to learn a server-assigned id. A register rejects a create whose
+  `resourceId` already exists.
+
+  **Guarantees.** A receiver implementing this pattern promises:
+
+  1. **All or nothing.** All commits are applied in one database transaction.
+     If one fails, nothing is stored.
+  2. **Validate, then apply.** Schema, references, business rules and
+     authorization are checked for every commit, and the resulting end state is
+     checked as a whole (for example: a new resource that the register
+     requires to have a related resource does have one) before anything is
+     stored. An error response lists every problem found, not only the first.
+  3. **Order.** Commits are applied in the order given. A commit may refer to
+     a resource created by an earlier commit in the same transaction.
+  4. **No phantom events.** Outgoing events are written to an outbox in the
+     same database transaction. After a rejection, nothing appears on any feed.
+  5. **Idempotent.** The CloudEvent `id` (unique per `source`) is the
+     idempotency key. The receiver stores the outcome under it, including a
+     rejection. The same `id` with the same body returns the stored response
+     with `Idempotent-Replayed: true`; the same `id` with a different body
+     returns `409`.
+
+  **What consumers see.** Every accepted commit appears on the register's
+  feed or event stream (for example `GET /events`, see
+  `apis/rest/zaakchat`) as one `json.commit` CloudEvent: the commit as sent,
+  plus `actor` and `timestamp` in the commit and `time`, `sequence` and the
+  extension attribute `transactionid` on the envelope. All events from one
+  transaction share the same `transactionid`, so a consumer can apply them
+  together. The `201` response contains exactly these events.
+
+  **Typed transactions.** A transaction may name a profile: set `type` to a
+  reverse-DNS name (for example `nl.vng.zaken.zaak-registreren.v1`) and
+  `dataschema` to a JSON Schema that the `data` must satisfy (for example:
+  exactly one new case, at least one status, an initiator). The receiver
+  validates against that profile in addition to the normal checks, and may
+  publish one extra event with that `type` after the transaction is accepted.
+  A new profile costs a schema, not a new endpoint. Without a profile every
+  combination of commits is allowed.
+
+  **Scope: one register.** A transaction only changes resources held by the
+  receiver. Commits may refer to resources in other registers (the receiver
+  may read them to validate), but cannot change them. Changes across registers
+  are not atomic: deliver them as separate transactions, each idempotent, and
+  order them so that every intermediate state is harmless. For a case with a
+  document: upload the document first
+  ([`patterns/file-upload`](../file-upload/next.yaml)), then create the case
+  and the link in one transaction at the case register. If that transaction
+  fails, the only leftover is an unlinked upload that expires.
+
+  **Mapping onto a ZGW 1.x register.** An existing ZGW register can offer this
+  endpoint in front of its current create, update and delete logic, inside one
+  database transaction:
+
+  - `schema` selects the resource type (`…/Zaak` → `zaken`, `…/Status` →
+    `statussen`).
+  - `resourceData` is the body of the normal `POST`, `patch` of the normal
+    `PATCH`, `deleted: true` maps to `DELETE`.
+  - `resourceId` becomes the resource UUID (ZGW 1.x assigns UUIDs itself, so
+    the register must accept a client-chosen one). References that are a
+    `resourceId` are resolved to the resource URL before the normal
+    validation runs.
+  - The per-resource notifications the register already sends go through the
+    same outbox.
+
+  **How to use.** A register references `TransactionRequest` and the
+  responses below, and may narrow `schema` to the resource types it holds:
+
+  ```yaml
+  requestBody:
+    content:
+      application/cloudevents+json:
+        schema:
+          $ref: "../../patterns/json-commit/next.yaml#/schemas/TransactionRequest"
+  ```
+
+headers:
+  IdempotentReplayed:
+    description: "`true` if this response is a replay of an earlier request with the same CloudEvent `id`."
+    schema:
+      type: boolean
+
+schemas:
+  TransactionRequest:
+    $ref: "../../schemas/events/next.json#/$defs/CommitTransaction"
+  TransactionResult:
+    type: object
+    required:
+      - transactionId
+      - events
+    properties:
+      transactionId:
+        type: string
+        description: Id assigned by the receiver. Every event below carries it as the `transactionid` extension attribute.
+        example: "urn:uuid:6c1e8f3a-2b4d-4a7e-9f10-3c5d7e9a1b2c"
+      events:
+        type: array
+        description: One `json.commit` event per commit, in request order, exactly as they appear on the feed.
+        items:
+          $ref: "../../schemas/events/next.json#/$defs/CommitEvent"
+  TransactionError:
+    description: |
+      Problem Details (`schemas/fout`) with `invalidParams`. `name` is a JSON
+      Pointer into the request, so the client can see which commit failed.
+    allOf:
+      - $ref: "../../schemas/fout/v0.0.1.json#/$defs/Fout"
+      - type: object
+        properties:
+          invalidParams:
+            type: array
+            items:
+              type: object
+              required: [name, code, reason]
+              properties:
+                name:
+                  type: string
+                  description: JSON Pointer into the request, for example `/data/commits/1/resourceData/statustype`.
+                code:
+                  type: string
+                reason:
+                  type: string
+
+examples:
+  RegisterCase:
+    summary: Create a case with a status, an initiator and a link to an uploaded document
+    description: |
+      The document was uploaded to the document register beforehand
+      (`patterns/file-upload`). This transaction creates the case and links
+      the document, atomically, at the case register. The `type` and
+      `dataschema` make it a typed transaction.
+    value:
+      specversion: "1.0"
+      id: "0f8a2c4e-5b1d-4e9a-9c3f-7d6b2a1e8f40"
+      source: "https://portal.example.org"
+      type: "nl.vng.zaken.zaak-registreren.v1"
+      dataschema: "https://zaken.example.nl/profiles/zaak-registreren/v1.json"
+      datacontenttype: "application/json"
+      data:
+        commits:
+          - resourceId: "urn:uuid:8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d"
+            schema: "https://zaken.example.nl/schemas/Zaak"
+            resourceData:
+              bronorganisatie: "002220647"
+              verantwoordelijkeOrganisatie: "002220647"
+              zaaktype: "https://catalogi.example.nl/api/v1/zaaktypen/7a3e2b1c-0d4f-4e5a-8b6c-9d0e1f2a3b4c"
+              omschrijving: "Aanvraag parkeervergunning"
+              startdatum: "2026-10-27"
+          - resourceId: "urn:uuid:9b0c1d2e-3f4a-4b6c-8d7e-8f9a0b1c2d3e"
+            schema: "https://zaken.example.nl/schemas/Status"
+            resourceData:
+              zaak: "urn:uuid:8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d"
+              statustype: "https://catalogi.example.nl/api/v1/statustypen/1b2c3d4e-5f60-4718-9a2b-3c4d5e6f7081"
+              datumStatusGezet: "2026-10-27T10:00:00Z"
+          - resourceId: "urn:uuid:0c1d2e3f-4a5b-4c7d-9e8f-9a0b1c2d3e4f"
+            schema: "https://zaken.example.nl/schemas/Rol"
+            resourceData:
+              zaak: "urn:uuid:8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d"
+              roltype: "https://catalogi.example.nl/api/v1/roltypen/2c3d4e5f-6071-4829-8b3c-4d5e6f708192"
+              betrokkeneType: natuurlijk_persoon
+              roltoelichting: "Aanvrager"
+              betrokkeneIdentificatie:
+                inpBsn: "999993653"
+          - resourceId: "urn:uuid:1d2e3f4a-5b6c-4d8e-8f9a-0b1c2d3e4f50"
+            schema: "https://zaken.example.nl/schemas/ZaakInformatieObject"
+            resourceData:
+              zaak: "urn:uuid:8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d"
+              informatieobject: "https://documenten.example.nl/api/v1/enkelvoudiginformatieobjecten/d1a2b3c4-d5e6-4f70-8192-a3b4c5d6e7f8"
+              titel: "Aanvraagformulier"
+  CloseCase:
+    summary: Close a case with a result, a final status and an updated description
+    description: Creates two resources and patches a third. They only make sense together.
+    value:
+      specversion: "1.0"
+      id: "3b7d1e9f-2a4c-4f6e-8b0d-5c7e9f1a3b5d"
+      source: "https://behandelapp.example.org"
+      type: "json.commit.transaction"
+      datacontenttype: "application/json"
+      data:
+        commits:
+          - resourceId: "urn:uuid:2e3f4a5b-6c7d-4e9f-9a0b-1c2d3e4f5061"
+            schema: "https://zaken.example.nl/schemas/Resultaat"
+            resourceData:
+              zaak: "urn:uuid:4f5e6d7c-8b9a-4c0d-9e1f-2a3b4c5d6e7f"
+              resultaattype: "https://catalogi.example.nl/api/v1/resultaattypen/3d4e5f60-7182-493a-9c4d-5e6f708192a3"
+          - resourceId: "urn:uuid:3f4a5b6c-7d8e-4f0a-8b1c-2d3e4f506172"
+            schema: "https://zaken.example.nl/schemas/Status"
+            resourceData:
+              zaak: "urn:uuid:4f5e6d7c-8b9a-4c0d-9e1f-2a3b4c5d6e7f"
+              statustype: "https://catalogi.example.nl/api/v1/statustypen/4e5f6071-8293-4a4b-8d5e-6f708192a3b4"
+              datumStatusGezet: "2026-11-03T16:30:00Z"
+          - resourceId: "urn:uuid:4f5e6d7c-8b9a-4c0d-9e1f-2a3b4c5d6e7f"
+            schema: "https://zaken.example.nl/schemas/Zaak"
+            patch:
+              toelichting: "Vergunning verleend"
+  ReplaceAssignee:
+    summary: Replace the assignee of a case
+    description: Deletes one role and creates another. There is no moment at which the case has no assignee.
+    value:
+      specversion: "1.0"
+      id: "5d9f3a1b-4c6e-4a8f-9d2b-7e9a1c3d5f7b"
+      source: "https://behandelapp.example.org"
+      type: "json.commit.transaction"
+      datacontenttype: "application/json"
+      data:
+        commits:
+          - resourceId: "urn:uuid:5f607182-93a4-4b5c-9e6f-708192a3b4c5"
+            schema: "https://zaken.example.nl/schemas/Rol"
+            deleted: true
+          - resourceId: "urn:uuid:60718293-a4b5-4c6d-8f70-8192a3b4c5d6"
+            schema: "https://zaken.example.nl/schemas/Rol"
+            resourceData:
+              zaak: "urn:uuid:4f5e6d7c-8b9a-4c0d-9e1f-2a3b4c5d6e7f"
+              roltype: "https://catalogi.example.nl/api/v1/roltypen/60718293-a4b5-4c6d-8f70-8192a3b4c5d6"
+              betrokkeneType: medewerker
+              roltoelichting: "Behandelaar"
+              betrokkeneIdentificatie:
+                identificatie: "m.jansen"
+  RegisterCaseResult:
+    summary: "201: all commits applied"
+    description: Shortened to the first two events; the others follow the same shape.
+    value:
+      transactionId: "urn:uuid:6c1e8f3a-2b4d-4a7e-9f10-3c5d7e9a1b2c"
+      events:
+        - specversion: "1.0"
+          id: "01JBR8Z4K7Q2W9E5T1Y3U6I8O0"
+          source: "https://zaken.example.nl"
+          type: "json.commit"
+          subject: "urn:uuid:8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d"
+          time: "2026-10-27T10:00:01Z"
+          sequence: "120346"
+          transactionid: "urn:uuid:6c1e8f3a-2b4d-4a7e-9f10-3c5d7e9a1b2c"
+          datacontenttype: "application/json"
+          data:
+            resourceId: "urn:uuid:8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d"
+            schema: "https://zaken.example.nl/schemas/Zaak"
+            actor: "https://portal.example.org"
+            timestamp: "2026-10-27T10:00:01Z"
+            resourceData:
+              bronorganisatie: "002220647"
+              verantwoordelijkeOrganisatie: "002220647"
+              zaaktype: "https://catalogi.example.nl/api/v1/zaaktypen/7a3e2b1c-0d4f-4e5a-8b6c-9d0e1f2a3b4c"
+              omschrijving: "Aanvraag parkeervergunning"
+              startdatum: "2026-10-27"
+        - specversion: "1.0"
+          id: "01JBR8Z4K7Q2W9E5T1Y3U6I8O1"
+          source: "https://zaken.example.nl"
+          type: "json.commit"
+          subject: "urn:uuid:9b0c1d2e-3f4a-4b6c-8d7e-8f9a0b1c2d3e"
+          time: "2026-10-27T10:00:01Z"
+          sequence: "120347"
+          transactionid: "urn:uuid:6c1e8f3a-2b4d-4a7e-9f10-3c5d7e9a1b2c"
+          datacontenttype: "application/json"
+          data:
+            resourceId: "urn:uuid:9b0c1d2e-3f4a-4b6c-8d7e-8f9a0b1c2d3e"
+            schema: "https://zaken.example.nl/schemas/Status"
+            actor: "https://portal.example.org"
+            timestamp: "2026-10-27T10:00:01Z"
+            resourceData:
+              zaak: "urn:uuid:8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d"
+              statustype: "https://catalogi.example.nl/api/v1/statustypen/1b2c3d4e-5f60-4718-9a2b-3c4d5e6f7081"
+              datumStatusGezet: "2026-10-27T10:00:00Z"
+  RegisterCaseRejected:
+    summary: "422: rejected, nothing was stored"
+    description: Every problem found, each with a JSON Pointer into the request.
+    value:
+      type: "https://example.org/problems/transaction-rejected"
+      title: "Transaction rejected; nothing was stored."
+      status: 422
+      instance: "urn:uuid:7d2f9a4b-3c5e-4b8f-8a21-4d6e8f0b2c3d"
+      invalidParams:
+        - name: "/data/commits/1/resourceData/statustype"
+          code: invalid-reference
+          reason: "This status type does not belong to the case type of urn:uuid:8a9b0c1d-…."
+        - name: "/data/commits/3/resourceData/informatieobject"
+          code: reference-not-ready
+          reason: "The document is still awaiting its upload."
+        - name: "/data/commits/0/resourceId"
+          code: resource-exists
+          reason: "A resource with this id already exists."
+  IdReused:
+    summary: "409: CloudEvent id already used for a different request"
+    value:
+      type: "https://example.org/problems/idempotency-key-reused"
+      title: "This event id was already used for a request with a different body."
+      status: 409
+
+responses:
+  TransactionApplied:
+    description: All commits were applied.
+    headers:
+      Idempotent-Replayed:
+        $ref: "#/headers/IdempotentReplayed"
+    content:
+      application/json:
+        schema:
+          $ref: "#/schemas/TransactionResult"
+        examples:
+          RegisterCase:
+            $ref: "#/examples/RegisterCaseResult"
+  TransactionRejected:
+    description: One or more commits are invalid. Nothing was stored or published.
+    content:
+      application/problem+json:
+        schema:
+          $ref: "#/schemas/TransactionError"
+        examples:
+          RegisterCase:
+            $ref: "#/examples/RegisterCaseRejected"
+  IdConflict:
+    description: The CloudEvent `id` was used before with a different body.
+    content:
+      application/problem+json:
+        schema:
+          $ref: "../../schemas/fout/v0.0.1.json#/$defs/Fout"
+        examples:
+          IdReused:
+            $ref: "#/examples/IdReused"

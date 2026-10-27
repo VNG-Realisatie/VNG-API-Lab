@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Events",
+  "description": "Shared event schemas: a CloudEvents envelope and JSONCommit, a generic description of one change to one JSON resource. Unlike v0.0.1, field names are camelCase and a transaction can carry several commits.",
+  "type": "object",
+  "$defs": {
+    "CloudEvent": {
+      "title": "CloudEvent",
+      "description": "CloudEvents 1.0 envelope (structured mode). Only the attributes used in this lab are listed; other CloudEvents attributes and extensions are allowed.",
+      "type": "object",
+      "required": ["id", "source", "specversion", "type"],
+      "properties": {
+        "specversion": {
+          "description": "CloudEvents specification version. Always \"1.0\".",
+          "const": "1.0"
+        },
+        "id": {
+          "description": "Unique id of this event within its `source`. For an incoming transaction this is also the idempotency key.",
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "description": "URI reference of the system or client that produced the event.",
+          "type": "string",
+          "format": "uri-reference"
+        },
+        "type": {
+          "description": "Event type. `json.commit` for a single accepted commit, `json.commit.transaction` for an incoming transaction, or a reverse-DNS profile type for a typed transaction.",
+          "type": "string"
+        },
+        "subject": {
+          "description": "What the event is about. For a `json.commit` event: the `resourceId` of the commit.",
+          "type": "string"
+        },
+        "time": {
+          "description": "When the change was recorded (RFC 3339).",
+          "type": "string",
+          "format": "date-time"
+        },
+        "datacontenttype": {
+          "description": "Media type of `data`, usually \"application/json\".",
+          "type": "string"
+        },
+        "dataschema": {
+          "description": "URI of the JSON Schema that `data` conforms to. For a typed transaction: the profile the receiver validates the transaction against.",
+          "type": "string",
+          "format": "uri"
+        },
+        "sequence": {
+          "description": "Position in the feed, assigned by the receiver when the event is recorded.",
+          "type": "string"
+        },
+        "sequencetype": {
+          "description": "Type of the sequence values.",
+          "type": "string"
+        },
+        "transactionid": {
+          "description": "CloudEvents extension attribute: id of the transaction this commit was part of. All events from one transaction carry the same value, so a consumer can apply them together. Lowercase because CloudEvents extension names must be lowercase alphanumeric.",
+          "type": "string"
+        },
+        "data": {
+          "description": "The event payload: a `JSONCommit` for `json.commit`, a `CommitBatch` for a transaction."
+        }
+      }
+    },
+    "JSONCommit": {
+      "title": "JSONCommit",
+      "description": "One change to one JSON resource. Exactly one of `resourceData` (create or replace), `patch` (update) or `deleted: true` (delete) is present.",
+      "type": "object",
+      "required": ["resourceId", "schema"],
+      "properties": {
+        "resourceId": {
+          "description": "Identity of the resource, chosen by whoever creates it (a URN or UUID). Other commits, in the same transaction or later, refer to the resource with this value.",
+          "type": "string",
+          "minLength": 1
+        },
+        "schema": {
+          "description": "URI of the JSON Schema that describes the resource.",
+          "type": "string",
+          "format": "uri"
+        },
+        "resourceData": {
+          "description": "The complete resource. Used to create a resource.",
+          "type": "object"
+        },
+        "patch": {
+          "description": "JSON Merge Patch (RFC 7396) applied to the existing resource. `null` removes a field.",
+          "type": "object"
+        },
+        "deleted": {
+          "description": "`true` deletes the resource.",
+          "const": true
+        },
+        "actor": {
+          "description": "Who made the change. Set by the receiver from the authenticated identity; a value sent by a client is ignored.",
+          "type": "string"
+        },
+        "timestamp": {
+          "description": "When the change was recorded (RFC 3339). Set by the receiver.",
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "oneOf": [
+        { "required": ["resourceData"], "not": { "anyOf": [{ "required": ["patch"] }, { "required": ["deleted"] }] } },
+        { "required": ["patch"], "not": { "anyOf": [{ "required": ["resourceData"] }, { "required": ["deleted"] }] } },
+        { "required": ["deleted"], "not": { "anyOf": [{ "required": ["resourceData"] }, { "required": ["patch"] }] } }
+      ]
+    },
+    "CommitBatch": {
+      "title": "CommitBatch",
+      "description": "The `data` of a transaction: commits that are applied in order, all or nothing.",
+      "type": "object",
+      "required": ["commits"],
+      "properties": {
+        "commits": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/JSONCommit" }
+        }
+      }
+    },
+    "CommitEvent": {
+      "title": "CommitEvent",
+      "description": "An accepted commit as it appears on a feed or event stream.",
+      "allOf": [
+        { "$ref": "#/$defs/CloudEvent" },
+        {
+          "type": "object",
+          "required": ["subject", "time", "data"],
+          "properties": {
+            "type": { "const": "json.commit" },
+            "data": { "$ref": "#/$defs/JSONCommit" }
+          }
+        }
+      ]
+    },
+    "CommitTransaction": {
+      "title": "CommitTransaction",
+      "description": "An incoming transaction: one CloudEvent whose `data` is a `CommitBatch`.",
+      "allOf": [
+        { "$ref": "#/$defs/CloudEvent" },
+        {
+          "type": "object",
+          "required": ["data"],
+          "properties": {
+            "data": { "$ref": "#/$defs/CommitBatch" }
+          }
+        }
+      ]
+    }
+  }
+}
