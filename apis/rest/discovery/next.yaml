@@ -42,7 +42,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "../../../schemas/discovery/v0.0.1.json#/$defs/ResourceRegistry"
+                $ref: "../../../schemas/discovery/next.json#/$defs/ResourceRegistry"
               example:
                 gemeente: "Gemeente Voorbeeld (demo)"
                 generatedAt: "2026-07-16T10:00:00Z"
