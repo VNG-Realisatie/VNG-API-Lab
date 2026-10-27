@@ -1,1 +1,19 @@
 extends: spectral:oas
+
+# Uitzonderingen voor voorbeelden in as-is geïmporteerde registerspecs. Die
+# voorbeelden komen van upstream en worden hier niet aangepast; los ze daar op.
+# Alleen precies deze regel op precies deze plekken staat uit.
+overrides:
+  # Open Klant (Maykin): voorbeeld van GET /partijen/{uuid} valideert niet
+  # tegen ExpandPartij ("nullable" zonder "type").
+  - files:
+      - "apis/rest/openklant-klantinteracties/mijnoverheid-demo.yaml#/paths/~1partijen~1%7Buuid%7D/get/responses/200/content/application~1json/example"
+    rules:
+      oas3-valid-media-example: "off"
+  # Open Plan: lijstvoorbeelden missen verplichte velden (doeltype,
+  # overkoepelendPlan).
+  - files:
+      - "apis/rest/openplan-plannen/next.yaml#/paths/~1doel/get/responses/200/content/application~1json/example"
+      - "apis/rest/openplan-plannen/next.yaml#/paths/~1plan/get/responses/200/content/application~1json/example"
+    rules:
+      oas3-valid-media-example: "off"
