@@ -1,71 +1,158 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Events",
-  "description": "Shared event schemas: a CloudEvents envelope and JSONCommit, a generic description of one change to one JSON resource. Unlike v0.0.1, field names are camelCase and a transaction can carry several commits.",
+  "description": "Gedeelde eventschema's: de CloudEvents-envelop (ingest volgens ADR-0004, levering via patterns/event-stream volgens ADR-0002, schrijven via patterns/json-commit) en JSONCommit. JSONCommit en de bijbehorende definities zijn generiek en daarom in het Engels; veldnamen zijn camelCase, anders dan in v0.0.1.",
   "type": "object",
   "$defs": {
     "CloudEvent": {
-      "title": "CloudEvent",
-      "description": "CloudEvents 1.0 envelope (structured mode). Only the attributes used in this lab are listed; other CloudEvents attributes and extensions are allowed.",
-      "type": "object",
-      "required": ["id", "source", "specversion", "type"],
+      "description": "CloudEvent 1.0 in JSON-formaat. Gebruikt als envelop bij ingest (ADR-0004), als data van een SSE-bericht in patterns/event-stream (ADR-0002) en als schrijfverzoek in patterns/json-commit.",
       "properties": {
-        "specversion": {
-          "description": "CloudEvents specification version. Always \"1.0\".",
-          "const": "1.0"
+        "data": {
+          "description": "De inhoud van de gebeurtenis: meestal de resource na de wijziging. Welk schema van toepassing is, volgt uit type (en eventueel dataschema). Bij type json.commit is dit een JSONCommit, bij json.commit.transaction een CommitBatch."
+        },
+        "datacontenttype": {
+          "description": "Formaat van de data (meestal \"application/json\")",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dataref": {
+          "description": "Verwijzing naar externe data locatie (indien data niet inline staat)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dataschema": {
+          "description": "URL naar het schema dat de data beschrijft. Bij een getypeerde transactie (patterns/json-commit): het profiel waartegen de ontvanger valideert.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "id": {
-          "description": "Unique id of this event within its `source`. For an incoming transaction this is also the idempotency key.",
-          "type": "string",
-          "minLength": 1
+          "description": "Unieke identificatie van deze gebeurtenis binnen source. Ontvangers ontdubbelen hierop; bij ingest en bij een schrijfverzoek is dit de idempotency-sleutel.",
+          "type": "string"
+        },
+        "sequence": {
+          "description": "Positie van de gebeurtenis in de stroom of feed van de bron, oplopend. In patterns/event-stream gelijk aan het SSE-id en bruikbaar als Last-Event-ID.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sequencetype": {
+          "description": "Type van de volgnummering die gebruikt wordt",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "source": {
-          "description": "URI reference of the system or client that produced the event.",
-          "type": "string",
-          "format": "uri-reference"
+          "description": "URI-referentie van de bron die de gebeurtenis heeft uitgegeven, bijvoorbeeld de basis-URL van de API-instantie. Bij ingest: wie dit beweert (provenance).",
+          "type": "string"
         },
-        "type": {
-          "description": "Event type. `json.commit` for a single accepted commit, `json.commit.transaction` for an incoming transaction, or a reverse-DNS profile type for a typed transaction.",
+        "specversion": {
+          "description": "Versie van de CloudEvents-specificatie (altijd \"1.0\").",
           "type": "string"
         },
         "subject": {
-          "description": "What the event is about. For a `json.commit` event: the `resourceId` of the commit.",
+          "description": "Het onderwerp van de gebeurtenis binnen source: bij voorkeur de URL (of URN) van de onderwerp-resource waarop autorisatie en filters werken, bijvoorbeeld de zaak of het gesprek, niet de losse bijdrage. Heeft de resource geen ouder, dan is dat de resource zelf.",
           "type": "string"
         },
         "time": {
-          "description": "When the change was recorded (RFC 3339).",
-          "type": "string",
-          "format": "date-time"
+          "description": "Tijdstip waarop de gebeurtenis plaatsvond (RFC 3339).",
+          "type": [
+            "string",
+            "null"
+          ]
         },
-        "datacontenttype": {
-          "description": "Media type of `data`, usually \"application/json\".",
-          "type": "string"
-        },
-        "dataschema": {
-          "description": "URI of the JSON Schema that `data` conforms to. For a typed transaction: the profile the receiver validates the transaction against.",
-          "type": "string",
-          "format": "uri"
-        },
-        "sequence": {
-          "description": "Position in the feed, assigned by the receiver when the event is recorded.",
-          "type": "string"
-        },
-        "sequencetype": {
-          "description": "Type of the sequence values.",
+        "type": {
+          "description": "Soort gebeurtenis. Domeinevents: nl.vng.<api>.<resource>.<actie> (bijvoorbeeld nl.vng.gesprekken.gesprek.aangemaakt). JSONCommits: json.commit (één commit) of json.commit.transaction (een CommitBatch); een getypeerde transactie gebruikt een eigen reverse-DNS-naam met dataschema.",
           "type": "string"
         },
         "transactionid": {
-          "description": "CloudEvents extension attribute: id of the transaction this commit was part of. All events from one transaction carry the same value, so a consumer can apply them together. Lowercase because CloudEvents extension names must be lowercase alphanumeric.",
+          "description": "CloudEvents-extensie (patterns/json-commit): id van de transactie waar deze commit deel van was. Alle events uit één transactie dragen dezelfde waarde, zodat een afnemer ze samen kan toepassen. In kleine letters omdat CloudEvents-extensienamen lowercase alfanumeriek moeten zijn.",
           "type": "string"
-        },
-        "data": {
-          "description": "The event payload: a `JSONCommit` for `json.commit`, a `CommitBatch` for a transaction."
         }
-      }
+      },
+      "required": [
+        "id",
+        "source",
+        "specversion",
+        "subject",
+        "type"
+      ],
+      "title": "CloudEvent",
+      "type": "object",
+      "examples": [
+        {
+          "specversion": "1.0",
+          "type": "nl.vng.gesprekken.gesprek.beeindigd",
+          "source": "https://gesprekken.example.com/api/v1",
+          "subject": "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f",
+          "id": "0b7e1c52-6f0e-4d8a-9c1b-2f3e4d5a6b7c",
+          "time": "2026-03-11T10:45:00Z",
+          "sequence": "18431",
+          "datacontenttype": "application/json",
+          "data": {
+            "uuid": "095be615-a8ad-4c33-8e9c-c7612fbf6c9f",
+            "url": "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f",
+            "referentie": "2026-GEM-00123",
+            "aanvangsmomentGesprek": "2026-03-11T10:00:00Z",
+            "momentEindeGesprek": "2026-03-11T10:45:00Z",
+            "gespreksonderwerp": "Aanvraag bijstandsuitkering",
+            "aanleidingZaak": "https://zaken.example.com/api/v1/zaken/def456"
+          }
+        },
+        {
+          "specversion": "1.0",
+          "type": "json.commit",
+          "source": "zaakchat-service",
+          "subject": "1",
+          "id": "01HF7K8QZ9X1Y2Z3A4B5C6D7E8",
+          "time": "2025-01-15T10:30:00Z",
+          "sequence": "41",
+          "datacontenttype": "application/json",
+          "data": {
+            "resourceId": "1",
+            "schema": "Issue",
+            "actor": "user@gemeente.nl",
+            "timestamp": "2025-01-15T10:30:00Z",
+            "resourceData": {
+              "id": "1",
+              "title": "Paspoort aanvragen",
+              "description": "Nieuwe paspoort aanvraag ingediend door burger",
+              "status": "open",
+              "assignee": "alice@gemeente.nl"
+            }
+          }
+        },
+        {
+          "specversion": "1.0",
+          "type": "json.commit",
+          "source": "zaakchat-service",
+          "subject": "1",
+          "id": "01HF7K8QZ9X1Y2Z3A4B5C6D7E9",
+          "time": "2025-01-15T10:35:00Z",
+          "sequence": "42",
+          "datacontenttype": "application/json",
+          "data": {
+            "resourceId": "comment-123",
+            "schema": "Comment",
+            "actor": "burger@eindhoven.nl",
+            "timestamp": "2025-01-15T10:35:00Z",
+            "resourceData": {
+              "content": "Wanneer kan ik mijn paspoort ophalen?"
+            }
+          }
+        }
+      ]
     },
     "JSONCommit": {
       "title": "JSONCommit",
-      "description": "One change to one JSON resource. Exactly one of `resourceData` (create or replace), `patch` (update) or `deleted: true` (delete) is present.",
+      "description": "One change to one JSON resource. Exactly one of `resourceData` (create), `patch` (update) or `deleted: true` (delete) is present.",
       "type": "object",
       "required": ["resourceId", "schema"],
       "properties": {
@@ -75,9 +162,9 @@
           "minLength": 1
         },
         "schema": {
-          "description": "URI of the JSON Schema that describes the resource.",
+          "description": "The JSON Schema that describes the resource: preferably its URI, or a short name (such as \"Comment\") that the receiver resolves to a URI, for example via /schemas/{name}.",
           "type": "string",
-          "format": "uri"
+          "minLength": 1
         },
         "resourceData": {
           "description": "The complete resource. Used to create a resource.",
@@ -121,14 +208,14 @@
         }
       }
     },
-    "CommitEvent": {
-      "title": "CommitEvent",
-      "description": "An accepted commit as it appears on a feed or event stream.",
+    "CommitRequest": {
+      "title": "CommitRequest",
+      "description": "An incoming single commit: one CloudEvent of type `json.commit` whose `data` is a `JSONCommit`. Handled as a transaction of one.",
       "allOf": [
         { "$ref": "#/$defs/CloudEvent" },
         {
           "type": "object",
-          "required": ["subject", "time", "data"],
+          "required": ["data"],
           "properties": {
             "type": { "const": "json.commit" },
             "data": { "$ref": "#/$defs/JSONCommit" }
@@ -138,14 +225,38 @@
     },
     "CommitTransaction": {
       "title": "CommitTransaction",
-      "description": "An incoming transaction: one CloudEvent whose `data` is a `CommitBatch`.",
+      "description": "An incoming transaction: one CloudEvent of type `json.commit.transaction` (or a typed profile) whose `data` is a `CommitBatch`. Its `subject` becomes the `subject` of every resulting `json.commit` event.",
       "allOf": [
         { "$ref": "#/$defs/CloudEvent" },
         {
           "type": "object",
           "required": ["data"],
           "properties": {
+            "type": { "not": { "const": "json.commit" } },
             "data": { "$ref": "#/$defs/CommitBatch" }
+          }
+        }
+      ]
+    },
+    "WriteRequest": {
+      "title": "WriteRequest",
+      "description": "What a client may POST to an events endpoint: a single commit or a transaction.",
+      "oneOf": [
+        { "$ref": "#/$defs/CommitRequest" },
+        { "$ref": "#/$defs/CommitTransaction" }
+      ]
+    },
+    "CommitEvent": {
+      "title": "CommitEvent",
+      "description": "An accepted commit as it appears on a feed or event stream.",
+      "allOf": [
+        { "$ref": "#/$defs/CloudEvent" },
+        {
+          "type": "object",
+          "required": ["time", "sequence", "data"],
+          "properties": {
+            "type": { "const": "json.commit" },
+            "data": { "$ref": "#/$defs/JSONCommit" }
           }
         }
       ]

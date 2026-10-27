@@ -14,21 +14,40 @@ description: |
   This pattern is domain-independent. The examples use ZGW cases (`zaak`,
   `status`, `rol`) only to make it concrete.
 
-  **Request.** One CloudEvent, posted in structured mode, whose `data` holds a
-  list of `commits`:
+  **One write path.** Clients write by posting one CloudEvent, in structured
+  mode, to the same `/events` endpoint they read the stream from. Two types
+  are accepted:
+
+  - `json.commit`: `data` is one JSONCommit. This is a transaction of one,
+    with the same guarantees, and stays compatible with existing clients that
+    post single commits.
+  - `json.commit.transaction` (or a typed profile, see below): `data` holds a
+    list of `commits`.
 
   ```
-  POST /transactions
+  POST /events
   Content-Type: application/cloudevents+json
 
   { "specversion": "1.0",
     "id": "0f8a2c4e-5b1d-4e9a-9c3f-7d6b2a1e8f40",
     "source": "https://portal.example.org",
     "type": "json.commit.transaction",
+    "subject": "urn:uuid:8a9b…",
     "data": { "commits": [
       { "resourceId": "urn:uuid:8a9b…", "schema": "https://…/Zaak",   "resourceData": { … } },
       { "resourceId": "urn:uuid:9b0c…", "schema": "https://…/Status", "resourceData": { "zaak": "urn:uuid:8a9b…", … } } ] } }
   ```
+
+  **Subject.** `subject` is the aggregate that consumers filter on and that
+  authorization is checked against: the case a comment or status belongs to,
+  not the comment itself. A resource without a parent is its own subject. The
+  `subject` of a request is copied onto every resulting `json.commit` event, so
+  a transaction stays within one aggregate; changes to several aggregates are
+  separate requests.
+
+  **Schema.** `schema` is preferably the URI of the resource's JSON Schema. A
+  short name (such as `Comment`) is allowed when the register resolves it to a
+  URI, for example via `/schemas/{name}`.
 
   Each commit is exactly one of:
 
@@ -62,12 +81,22 @@ description: |
      returns `409`.
 
   **What consumers see.** Every accepted commit appears on the register's
-  feed or event stream (for example `GET /events`, see
-  `apis/rest/zaakchat`) as one `json.commit` CloudEvent: the commit as sent,
-  plus `actor` and `timestamp` in the commit and `time`, `sequence` and the
-  extension attribute `transactionid` on the envelope. All events from one
-  transaction share the same `transactionid`, so a consumer can apply them
-  together. The `201` response contains exactly these events.
+  event stream (`GET /events`, see `patterns/event-stream`) or feed as one
+  `json.commit` CloudEvent: the commit as sent, plus `actor` and `timestamp`
+  in the commit and `time`, `sequence` and the extension attribute
+  `transactionid` on the envelope. All events from one transaction share the
+  same `transactionid`, so a consumer can apply them together.
+
+  **Response.** The register applies the request synchronously and answers
+  `201` with exactly these events. A register that has to queue the work may
+  instead answer `202` with a `Location` header pointing to a status resource
+  that ends in `applied` (with the events) or `rejected` (with the same
+  problem details as a `422`); the guarantees are the same, the client only
+  learns the outcome later.
+
+  **Event types.** The only generic types are `json.commit` and
+  `json.commit.transaction`. Reverse-DNS types are reserved for typed
+  profiles and for domain events.
 
   **Typed transactions.** A transaction may name a profile: set `type` to a
   reverse-DNS name (for example `nl.vng.zaken.zaak-registreren.v1`) and
@@ -103,15 +132,21 @@ description: |
   - The per-resource notifications the register already sends go through the
     same outbox.
 
-  **How to use.** A register references `TransactionRequest` and the
-  responses below, and may narrow `schema` to the resource types it holds:
+  **How to use.** A register adds `post` to its `/events` path, references
+  `WriteRequest` and the responses below, and may narrow `schema` to the
+  resource types it holds:
 
   ```yaml
-  requestBody:
-    content:
-      application/cloudevents+json:
-        schema:
-          $ref: "../../patterns/json-commit/next.yaml#/schemas/TransactionRequest"
+  /events:
+    post:
+      requestBody:
+        content:
+          application/cloudevents+json:
+            schema:
+              $ref: "../../patterns/json-commit/next.yaml#/schemas/WriteRequest"
+      responses:
+        "201":
+          $ref: "../../patterns/json-commit/next.yaml#/responses/TransactionApplied"
   ```
 
 headers:
@@ -121,8 +156,8 @@ headers:
       type: boolean
 
 schemas:
-  TransactionRequest:
-    $ref: "../../schemas/events/next.json#/$defs/CommitTransaction"
+  WriteRequest:
+    $ref: "../../schemas/events/next.json#/$defs/WriteRequest"
   TransactionResult:
     type: object
     required:
@@ -161,6 +196,24 @@ schemas:
                   type: string
 
 examples:
+  AddComment:
+    summary: Add one comment to a case (a transaction of one)
+    description: |
+      A single `json.commit`, as existing clients already post it. The
+      `subject` is the case, so everyone who may read the case receives the
+      event; `schema` is a short name the register resolves.
+    value:
+      specversion: "1.0"
+      id: "8c2e4a6b-1d3f-4e5a-9b7c-0d2e4f6a8b1c"
+      source: "https://portal.example.org"
+      type: "json.commit"
+      subject: "urn:uuid:4f5e6d7c-8b9a-4c0d-9e1f-2a3b4c5d6e7f"
+      datacontenttype: "application/json"
+      data:
+        resourceId: "urn:uuid:7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d"
+        schema: "Comment"
+        resourceData:
+          content: "Wanneer kan ik mijn vergunning ophalen?"
   RegisterCase:
     summary: Create a case with a status, an initiator and a link to an uploaded document
     description: |
@@ -173,6 +226,7 @@ examples:
       id: "0f8a2c4e-5b1d-4e9a-9c3f-7d6b2a1e8f40"
       source: "https://portal.example.org"
       type: "nl.vng.zaken.zaak-registreren.v1"
+      subject: "urn:uuid:8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d"
       dataschema: "https://zaken.example.nl/profiles/zaak-registreren/v1.json"
       datacontenttype: "application/json"
       data:
@@ -214,6 +268,7 @@ examples:
       id: "3b7d1e9f-2a4c-4f6e-8b0d-5c7e9f1a3b5d"
       source: "https://behandelapp.example.org"
       type: "json.commit.transaction"
+      subject: "urn:uuid:4f5e6d7c-8b9a-4c0d-9e1f-2a3b4c5d6e7f"
       datacontenttype: "application/json"
       data:
         commits:
@@ -240,6 +295,7 @@ examples:
       id: "5d9f3a1b-4c6e-4a8f-9d2b-7e9a1c3d5f7b"
       source: "https://behandelapp.example.org"
       type: "json.commit.transaction"
+      subject: "urn:uuid:4f5e6d7c-8b9a-4c0d-9e1f-2a3b4c5d6e7f"
       datacontenttype: "application/json"
       data:
         commits:
@@ -285,7 +341,7 @@ examples:
           id: "01JBR8Z4K7Q2W9E5T1Y3U6I8O1"
           source: "https://zaken.example.nl"
           type: "json.commit"
-          subject: "urn:uuid:9b0c1d2e-3f4a-4b6c-8d7e-8f9a0b1c2d3e"
+          subject: "urn:uuid:8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d"
           time: "2026-10-27T10:00:01Z"
           sequence: "120347"
           transactionid: "urn:uuid:6c1e8f3a-2b4d-4a7e-9f10-3c5d7e9a1b2c"
