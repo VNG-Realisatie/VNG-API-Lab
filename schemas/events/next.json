@@ -118,14 +118,14 @@
           "data": {
             "resourceId": "1",
             "schema": "Issue",
-            "actor": "user@gemeente.nl",
+            "actor": "urn:pseudoniem:3e8a1f5c-7b2d-4c9e-b0a6-1d4f7e9c2b58",
             "timestamp": "2025-01-15T10:30:00Z",
             "resourceData": {
               "id": "1",
               "title": "Paspoort aanvragen",
               "description": "Nieuwe paspoort aanvraag ingediend door burger",
               "status": "open",
-              "assignee": "alice@gemeente.nl"
+              "assignee": "urn:pseudoniem:9c2d6b8e-1a4f-4e7c-8d3b-5f0a2e6c9d14"
             }
           }
         },
@@ -141,7 +141,7 @@
           "data": {
             "resourceId": "comment-123",
             "schema": "Comment",
-            "actor": "burger@eindhoven.nl",
+            "actor": "urn:pseudoniem:b7c41e9a-5d2f-4c8e-a1b3-6f9d0e2c4a75",
             "timestamp": "2025-01-15T10:35:00Z",
             "resourceData": {
               "content": "Wanneer kan ik mijn paspoort ophalen?"
@@ -179,7 +179,7 @@
           "const": true
         },
         "actor": {
-          "description": "Who made the change. Set by the receiver from the authenticated identity; a value sent by a client is ignored.",
+          "description": "Who made the change. Set by the receiver from the authenticated identity; a value sent by a client is ignored. Everyone who may read the subject sees it, so it is a pseudonymous or organizational identifier, never a BSN, e-mail address or other personal identifier.",
           "type": "string"
         },
         "timestamp": {

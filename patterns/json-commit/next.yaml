@@ -45,6 +45,14 @@ description: |
   a transaction stays within one aggregate; changes to several aggregates are
   separate requests.
 
+  The client chooses `subject`, so the receiver **verifies** it rather than
+  trusting it: every commit must actually belong to that aggregate. For an
+  existing resource the receiver uses the aggregate it has stored for it; for
+  a new resource, its reference to its parent (for a status: its `zaak`). A
+  patch that moves a resource to another aggregate (changing `zaak`) is
+  rejected. Without this check a client could claim a case it may write and
+  change a status in a case it may not.
+
   **Schema.** `schema` is preferably the URI of the resource's JSON Schema. A
   short name (such as `Comment`) is allowed when the register resolves it to a
   URI, for example via `/schemas/{name}`.
@@ -65,8 +73,8 @@ description: |
 
   1. **All or nothing.** All commits are applied in one database transaction.
      If one fails, nothing is stored.
-  2. **Validate, then apply.** Schema, references, business rules and
-     authorization are checked for every commit, and the resulting end state is
+  2. **Validate, then apply.** Schema, references, business rules and the
+     subject are checked for every commit, and the resulting end state is
      checked as a whole (for example: a new resource that the register
      requires to have a related resource does have one) before anything is
      stored. An error response lists every problem found, not only the first.
@@ -74,11 +82,45 @@ description: |
      a resource created by an earlier commit in the same transaction.
   4. **No phantom events.** Outgoing events are written to an outbox in the
      same database transaction. After a rejection, nothing appears on any feed.
-  5. **Idempotent.** The CloudEvent `id` (unique per `source`) is the
-     idempotency key. The receiver stores the outcome under it, including a
-     rejection. The same `id` with the same body returns the stored response
-     with `Idempotent-Replayed: true`; the same `id` with a different body
+  5. **Idempotent.** The idempotency key is the authenticated client (its
+     client id, plus the actor for user tokens) together with the CloudEvent
+     `source` and `id`. The client chooses `source` and `id` itself, so they
+     alone are not enough: a replay returns the stored response, including
+     `resourceData`, and must never reach another client that happens to send
+     the same values. The receiver stores the outcome under the key, including
+     a rejection. The same key with the same body returns the stored response
+     with `Idempotent-Replayed: true`; the same key with a different body
      returns `409`.
+
+  **Authorization.** Checks run in this order, so that a refusal reveals
+  nothing:
+
+  1. **Authentication** (`401`), with the token requirements of
+     [`patterns/federated-auth`](../federated-auth/next.yaml) and a write
+     scope for the API (`{api}:schrijven`, for example `zaken:schrijven`).
+  2. **One decision per transaction** (`403`). For every commit the question
+     is the same triple: may this caller do *create*, *patch* or *delete* on
+     this `schema` within this `subject`? A receiver with a policy decision
+     point asks all of them in one call, for example an AuthZEN batch
+     evaluation with `deny_on_first_deny`. If any commit is refused, the
+     whole transaction gets one `403` (`RecordNietGemachtigd` from
+     `patterns/federated-auth`), without saying which commit or why: per-commit
+     reasons in `invalidParams` would reveal what exists in an aggregate the
+     caller may not see.
+  3. **Validation** (`422`), only after authorization succeeded. A create
+     whose `resourceId` already exists in an aggregate the caller may not
+     read is answered with `403`, not with `resource-exists`.
+
+  **Profiles as the unit of policy.** For a typed transaction the profile
+  name (its `type`) is the action that policy decides on, instead of every
+  combination of schemas. A typical policy: a citizen's client may only run
+  specific profiles (such as `zaak-registreren`), while the generic
+  `json.commit.transaction` is reserved for trusted case-worker applications.
+
+  **Actor.** The receiver sets `actor` from the token and ignores a value
+  sent by the client. Everyone who may read the subject sees it in every
+  event, so it is a pseudonymous or organizational identifier, never a BSN,
+  an e-mail address or another personal identifier.
 
   **What consumers see.** Every accepted commit appears on the register's
   event stream (`GET /events`, see `patterns/event-stream`) or feed as one
@@ -133,12 +175,15 @@ description: |
     same outbox.
 
   **How to use.** A register adds `post` to its `/events` path, references
-  `WriteRequest` and the responses below, and may narrow `schema` to the
-  resource types it holds:
+  `WriteRequest` and the responses below, takes over the security scheme of
+  `patterns/federated-auth` (with a write scope), and may narrow `schema` to
+  the resource types it holds:
 
   ```yaml
   /events:
     post:
+      security:
+        - FederatedOAuth2: [zaken:schrijven]
       requestBody:
         content:
           application/cloudevents+json:
@@ -147,11 +192,19 @@ description: |
       responses:
         "201":
           $ref: "../../patterns/json-commit/next.yaml#/responses/TransactionApplied"
+        "401":
+          $ref: "../../patterns/json-commit/next.yaml#/responses/NotAuthenticated"
+        "403":
+          $ref: "../../patterns/json-commit/next.yaml#/responses/NotAuthorized"
+        "409":
+          $ref: "../../patterns/json-commit/next.yaml#/responses/IdConflict"
+        "422":
+          $ref: "../../patterns/json-commit/next.yaml#/responses/TransactionRejected"
   ```
 
 headers:
   IdempotentReplayed:
-    description: "`true` if this response is a replay of an earlier request with the same CloudEvent `id`."
+    description: "`true` if this response is a replay of an earlier request by the same client with the same CloudEvent `source` and `id`."
     schema:
       type: boolean
 
@@ -329,7 +382,7 @@ examples:
           data:
             resourceId: "urn:uuid:8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d"
             schema: "https://zaken.example.nl/schemas/Zaak"
-            actor: "https://portal.example.org"
+            actor: "urn:pseudoniem:b7c41e9a-5d2f-4c8e-a1b3-6f9d0e2c4a75"
             timestamp: "2026-10-27T10:00:01Z"
             resourceData:
               bronorganisatie: "002220647"
@@ -349,7 +402,7 @@ examples:
           data:
             resourceId: "urn:uuid:9b0c1d2e-3f4a-4b6c-8d7e-8f9a0b1c2d3e"
             schema: "https://zaken.example.nl/schemas/Status"
-            actor: "https://portal.example.org"
+            actor: "urn:pseudoniem:b7c41e9a-5d2f-4c8e-a1b3-6f9d0e2c4a75"
             timestamp: "2026-10-27T10:00:01Z"
             resourceData:
               zaak: "urn:uuid:8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d"
@@ -373,6 +426,18 @@ examples:
         - name: "/data/commits/0/resourceId"
           code: resource-exists
           reason: "A resource with this id already exists."
+        - name: "/data/commits/2/resourceData/zaak"
+          code: subject-mismatch
+          reason: "This resource does not belong to the subject of the request."
+  NotAuthorizedExample:
+    summary: "403: one refusal for the whole transaction"
+    description: |
+      No pointer and no reason per commit: the caller learns that the
+      transaction is not allowed, not which commit or what exists in the case.
+    value:
+      type: "https://example.org/problems/record-niet-gemachtigd"
+      title: "Not authorized for this transaction."
+      status: 403
   IdReused:
     summary: "409: CloudEvent id already used for a different request"
     value:
@@ -402,8 +467,27 @@ responses:
         examples:
           RegisterCase:
             $ref: "#/examples/RegisterCaseRejected"
+  NotAuthenticated:
+    description: The token is missing, invalid or expired, or lacks the write scope (see `patterns/federated-auth`).
+    content:
+      application/problem+json:
+        schema:
+          $ref: "../../schemas/fout/v0.0.1.json#/$defs/Fout"
+  NotAuthorized:
+    description: |
+      The caller is authenticated but may not perform at least one commit in
+      this transaction. One answer for the whole transaction, without
+      per-commit details. Same meaning as `RecordNietGemachtigd` in
+      `patterns/federated-auth`.
+    content:
+      application/problem+json:
+        schema:
+          $ref: "../../schemas/fout/v0.0.1.json#/$defs/Fout"
+        examples:
+          NotAuthorized:
+            $ref: "#/examples/NotAuthorizedExample"
   IdConflict:
-    description: The CloudEvent `id` was used before with a different body.
+    description: This client used the same CloudEvent `source` and `id` before with a different body.
     content:
       application/problem+json:
         schema:
