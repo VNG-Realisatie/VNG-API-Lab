@@ -73,6 +73,13 @@ description: |
     producten. Dit is het antwoord op het AVG-bezwaar tegen een append-only
     log uit ADR-0002.
 
+  **Extensieattributen.** Een API mag CloudEvent-extensieattributen
+  toevoegen voor routering, zodat een afnemer een event zonder extra opvraag
+  kan plaatsen. Voorbeeld: `aanleidingzaak` (de zaak waarbij het onderwerp
+  hoort) in MijnGesprekken. Volgens CloudEvents bestaat de naam alleen uit
+  kleine letters en cijfers. Een extensie bevat een verwijzing, nooit inhoud
+  of persoonsgegevens, en een afnemer mag haar negeren.
+
   **Privacy.** Iedereen die het onderwerp mag lezen, ontvangt hetzelfde
   event. Neem in `data` daarom niets op wat niet al die ontvangers mogen zien,
   zoals BSN, e-mailadres of andere identificerende gegevens van een

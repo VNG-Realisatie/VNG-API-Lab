@@ -100,6 +100,15 @@ paths:
           description: Filter op de unieke referentie van het gesprek.
           schema:
             type: string
+        - name: aanleidingZaak
+          in: query
+          description: >
+            Filter op gesprekken met deze ZAAK (Zaken API) als aanleiding.
+            Nodig om de gesprekken van een zaak te tonen, bijvoorbeeld op de
+            zaakpagina van de MijnOmgeving.
+          schema:
+            type: string
+            format: uri
         - name: aanvangsmomentGesprek__gte
           in: query
           description: Filter op aanvangsmoment (groter dan of gelijk aan).
@@ -603,7 +612,8 @@ paths:
         `data` (het CloudEvent als JSON). Elke 30 seconden stuurt de server
         een commentaarregel (`: ping`) om de verbinding open te houden.
         `subject` is altijd de URL van het gesprek waarop het event betrekking
-        heeft.
+        heeft. Het extensieattribuut `aanleidingzaak` bevat de zaak van dat
+        gesprek.
 
         **Eventtypes.**
 
@@ -779,15 +789,25 @@ components:
 
     GesprekDetail:
       description: >
-        Eén gesprek, aangevuld met de gespreksbijdragen binnen dat gesprek.
-        Gebruikt door `GET /gesprekken/{uuid}`; de lijstweergave
-        (`GET /gesprekken`) bevat deze bijdragen niet.
+        Eén gesprek, aangevuld met de gespreksdeelnames en gespreksbijdragen
+        binnen dat gesprek. Gebruikt door `GET /gesprekken/{uuid}`; de
+        lijstweergave (`GET /gesprekken`) bevat deze niet.
       allOf:
         - $ref: '#/components/schemas/Gesprek'
         - type: object
           required:
+            - gespreksdeelnames
             - gespreksbijdragen
           properties:
+            gespreksdeelnames:
+              type: array
+              readOnly: true
+              items:
+                $ref: '#/components/schemas/GespreksdeelnameInGesprek'
+              description: >
+                De deelnames aan dit gesprek, oudste eerst. Een client heeft ze
+                nodig om te zien welke bijdragen van de eigen deelname zijn en
+                met welke deelname hij reageert.
             gespreksbijdragen:
               type: array
               readOnly: true
@@ -796,6 +816,57 @@ components:
               description: >
                 De gespreksbijdragen binnen dit gesprek, chronologisch
                 geordend (oudste eerst).
+
+    GespreksdeelnameInGesprek:
+      type: object
+      description: >
+        Een gespreksdeelname zoals opgenomen in `GesprekDetail`. Iedere
+        deelnemer kan het gesprek lezen, dus zonder `emailadres`, `bsn`,
+        `rsin`, `kvkNummer` en `vestigingsnummer`.
+      required:
+        - uuid
+        - url
+        - type
+        - naam
+        - aanvangsmomentDeelname
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440002"
+        url:
+          type: string
+          format: uri
+        type:
+          type: string
+          enum:
+            - actor
+            - partij
+          example: partij
+        partij:
+          type: string
+          format: uuid
+          nullable: true
+          description: UUID-referentie naar de Partij (Klantinteracties API), bij `type` partij.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        actor:
+          type: string
+          format: uri
+          nullable: true
+          description: URL-referentie naar de Actor (Klantinteracties API), bij `type` actor.
+          example: null
+        naam:
+          type: string
+          example: "Jan Jansen"
+        aanvangsmomentDeelname:
+          type: string
+          format: date-time
+          example: "2026-03-11T10:15:00Z"
+        momentEindeDeelname:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
 
     GesprekList:
       description: Gepagineerde lijst van gesprekken (zie `patterns/pagination`).
@@ -855,6 +926,7 @@ components:
           type: string
           enum:
             - referentie
+            - aanleidingZaak
             - aanvangsmomentGesprek
             - gespreksdeelname
             - gespreksdeelname__type
@@ -1369,6 +1441,15 @@ components:
               format: uri
               description: URL van het gesprek waarop het event betrekking heeft.
               example: "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
+            aanleidingzaak:
+              type: string
+              format: uri
+              description: >
+                CloudEvent-extensieattribuut: de ZAAK (Zaken API) die
+                aanleiding is voor het gesprek. Een afnemer kan zo elk event
+                zonder extra opvraag aan de zaak koppelen, bijvoorbeeld om de
+                zaakpagina van de MijnOmgeving te verversen.
+              example: "https://zaken.example.com/api/v1/zaken/def456"
             data:
               description: >
                 De resource na de wijziging. Welk schema van toepassing is,
@@ -1389,6 +1470,7 @@ components:
         time: "2026-03-11T10:05:00Z"
         sequence: "18424"
         datacontenttype: application/json
+        aanleidingzaak: "https://zaken.example.com/api/v1/zaken/def456"
         data:
           uuid: "550e8400-e29b-41d4-a716-446655440001"
           url: "https://gesprekken.example.com/api/v1/gespreksbijdragen/550e8400-e29b-41d4-a716-446655440001"
