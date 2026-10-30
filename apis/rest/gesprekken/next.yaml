@@ -653,6 +653,16 @@ paths:
             items:
               type: string
               format: uuid
+        - name: aanleidingZaak
+          in: query
+          required: false
+          description: >
+            Optioneel: versmal de stroom tot gesprekken met deze ZAAK (Zaken
+            API) als aanleiding. Een MijnOmgeving volgt zo de gesprekken van een
+            zaak.
+          schema:
+            type: string
+            format: uri
         - $ref: '../../../patterns/event-stream/next.yaml#/parameters/LastEventId'
       responses:
         "200":
@@ -1516,6 +1526,21 @@ components:
             - partij
           description: Of de deelname een Partij of een Actor betreft.
           example: partij
+        partij:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            UUID-referentie naar de Partij (Klantinteracties API), bij `type`
+            partij. Een verwijzing, geen persoonsgegeven: een afnemer herkent er
+            de eigen deelname aan.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        actor:
+          type: string
+          format: uri
+          nullable: true
+          description: URL-referentie naar de Actor (Klantinteracties API), bij `type` actor.
+          example: null
         naam:
           type: string
           description: Naam van de deelnemer, zoals getoond in het gesprek.
