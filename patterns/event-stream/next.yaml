@@ -177,7 +177,7 @@ responses:
     content:
       application/problem+json:
         schema:
-          $ref: "../../schemas/fout/v0.0.1.json#/$defs/Fout"
+          $ref: "../../schemas/fout/next.json#/$defs/Fout"
 
 schemas:
   EventBasis:
