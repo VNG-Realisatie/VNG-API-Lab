@@ -124,11 +124,11 @@ paths:
         - name: gespreksdeelname
           in: query
           description: >
-            Filter op het gesprek waarin de gespreksdeelname met deze UUID
+            Filter op het gesprek waarin de gespreksdeelname met deze URL
             voorkomt.
           schema:
             type: string
-            format: uuid
+            format: uri
         - name: gespreksdeelname__type
           in: query
           description: >
@@ -158,7 +158,7 @@ paths:
             deelnemen (elke keer via een eigen gespreksdeelname).
           schema:
             type: string
-            format: uuid
+            format: uri
         - name: gespreksdeelname__rsin
           in: query
           description: >
@@ -643,7 +643,7 @@ paths:
           in: query
           required: false
           description: >
-            Optioneel: versmal de stroom tot deze gesprekken (UUID's). Zonder
+            Optioneel: versmal de stroom tot deze gesprekken (URL's). Zonder
             deze parameter levert de stroom events over alle gesprekken die de
             aanroeper mag lezen.
           style: form
@@ -652,7 +652,7 @@ paths:
             type: array
             items:
               type: string
-              format: uuid
+              format: uri
         - name: aanleidingZaak
           in: query
           required: false
@@ -855,10 +855,10 @@ components:
           example: partij
         partij:
           type: string
-          format: uuid
+          format: uri
           nullable: true
-          description: UUID-referentie naar de Partij (Klantinteracties API), bij `type` partij.
-          example: "550e8400-e29b-41d4-a716-446655440000"
+          description: URL-referentie naar de Partij (Klantinteracties API), bij `type` partij.
+          example: "https://klantinteracties.example.com/api/v1/partijen/550e8400-e29b-41d4-a716-446655440000"
         actor:
           type: string
           format: uri
@@ -1048,15 +1048,15 @@ components:
           example: "Goedemorgen, ik wil graag informatie over de aanvraagprocedure."
         gesprek:
           type: string
-          format: uuid
-          description: UUID van het gesprek waartoe deze bijdrage behoort.
-          example: "095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
+          format: uri
+          description: URL van het gesprek waartoe deze bijdrage behoort.
+          example: "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
         isReactieOp:
           type: string
-          format: uuid
+          format: uri
           nullable: true
           description: >
-            UUID van de gespreksbijdrage waarop dit een reactie is.
+            URL van de gespreksbijdrage waarop dit een reactie is.
             Een gespreksbijdrage kan een reactie zijn op een andere gespreksbijdrage.
           example: null
         bijlagen:
@@ -1074,7 +1074,7 @@ components:
       description: >
         De gespreksdeelname die deze gespreksbijdrage levert. Precies één van
         de volgende twee opties:
-        - `gespreksdeelname`: UUID-referentie naar een reeds bestaande
+        - `gespreksdeelname`: URL-referentie naar een reeds bestaande
           Gespreksdeelname binnen hetzelfde gesprek.
         - `nieuweDeelname`: maak in dezelfde aanvraag een nieuwe
           Gespreksdeelname aan — zelfde vorm als een item in `ontvanger` bij
@@ -1087,12 +1087,12 @@ components:
       properties:
         gespreksdeelname:
           type: string
-          format: uuid
+          format: uri
           nullable: true
           description: >
-            UUID van een reeds bestaande gespreksdeelname. Uitsluitend te
+            URL van een reeds bestaande gespreksdeelname. Uitsluitend te
             combineren met een lege `nieuweDeelname`.
-          example: "550e8400-e29b-41d4-a716-446655440000"
+          example: "https://gesprekken.example.com/api/v1/gespreksdeelnames/550e8400-e29b-41d4-a716-446655440000"
         nieuweDeelname:
           nullable: true
           allOf:
@@ -1175,15 +1175,15 @@ components:
               example: "2026-03-11T10:05:00Z"
             verzender:
               type: string
-              format: uuid
+              format: uri
               description: >
-                UUID van de gespreksdeelname die deze bijdrage heeft geleverd.
+                URL van de gespreksdeelname die deze bijdrage heeft geleverd.
                 Een gespreksbijdrage is geleverd door exact één gespreksdeelname.
                 Ongeacht of bij het aanmaken naar een bestaande gespreksdeelname
                 is verwezen of een nieuwe is aangemaakt op basis van een partij of
-                actor, wordt hier steeds de resulterende gespreksdeelname-UUID
+                actor, wordt hier steeds de URL van de resulterende gespreksdeelname
                 getoond.
-              example: "550e8400-e29b-41d4-a716-446655440000"
+              example: "https://gesprekken.example.com/api/v1/gespreksdeelnames/550e8400-e29b-41d4-a716-446655440000"
         - $ref: '#/components/schemas/GespreksbijdrageBase'
       required:
         - uuid
@@ -1231,13 +1231,13 @@ components:
           example: partij
         partij:
           type: string
-          format: uuid
+          format: uri
           nullable: true
           description: >
-            UUID-referentie naar de Partij (Klantinteracties API) waarvoor een
+            URL-referentie naar de Partij (Klantinteracties API) waarvoor een
             nieuwe Gespreksdeelname wordt aangemaakt. Verplicht wanneer `type`
             gelijk is aan `partij`.
-          example: "550e8400-e29b-41d4-a716-446655440000"
+          example: "https://klantinteracties.example.com/api/v1/partijen/550e8400-e29b-41d4-a716-446655440000"
         actor:
           type: string
           format: uri
@@ -1303,9 +1303,9 @@ components:
           properties:
             gesprek:
               type: string
-              format: uuid
-              description: UUID van het gesprek waaraan wordt deelgenomen.
-              example: "095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
+              format: uri
+              description: URL van het gesprek waaraan wordt deelgenomen.
+              example: "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
 
     Gespreksdeelname:
       description: >
@@ -1333,9 +1333,9 @@ components:
               description: URL van deze resource.
             gesprek:
               type: string
-              format: uuid
-              description: UUID van het gesprek waaraan wordt deelgenomen.
-              example: "095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
+              format: uri
+              description: URL van het gesprek waaraan wordt deelgenomen.
+              example: "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
             aanvangsmomentDeelname:
               type: string
               format: date-time
@@ -1378,9 +1378,9 @@ components:
       properties:
         gespreksdeelname:
           type: string
-          format: uuid
-          description: UUID van de gespreksdeelname die de bijdrage heeft gelezen.
-          example: "550e8400-e29b-41d4-a716-446655440000"
+          format: uri
+          description: URL van de gespreksdeelname die de bijdrage heeft gelezen.
+          example: "https://gesprekken.example.com/api/v1/gespreksdeelnames/550e8400-e29b-41d4-a716-446655440000"
 
     GelezenGespreksbijdrage:
       type: object
@@ -1404,15 +1404,15 @@ components:
           description: URL van deze resource.
         gespreksdeelname:
           type: string
-          format: uuid
-          description: UUID van de gespreksdeelname die de bijdrage heeft gelezen.
-          example: "550e8400-e29b-41d4-a716-446655440000"
+          format: uri
+          description: URL van de gespreksdeelname die de bijdrage heeft gelezen.
+          example: "https://gesprekken.example.com/api/v1/gespreksdeelnames/550e8400-e29b-41d4-a716-446655440000"
         gespreksbijdrage:
           type: string
-          format: uuid
+          format: uri
           readOnly: true
-          description: UUID van de gespreksbijdrage die is gelezen.
-          example: "550e8400-e29b-41d4-a716-446655440001"
+          description: URL van de gespreksbijdrage die is gelezen.
+          example: "https://gesprekken.example.com/api/v1/gespreksbijdragen/550e8400-e29b-41d4-a716-446655440001"
         momentGelezen:
           type: string
           format: date-time
@@ -1485,9 +1485,9 @@ components:
           uuid: "550e8400-e29b-41d4-a716-446655440001"
           url: "https://gesprekken.example.com/api/v1/gespreksbijdragen/550e8400-e29b-41d4-a716-446655440001"
           leveringsmoment: "2026-03-11T10:05:00Z"
-          verzender: "550e8400-e29b-41d4-a716-446655440000"
+          verzender: "https://gesprekken.example.com/api/v1/gespreksdeelnames/550e8400-e29b-41d4-a716-446655440000"
           tekstGespreksBijdrage: "Goedemorgen, ik wil graag informatie over de aanvraagprocedure."
-          gesprek: "095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
+          gesprek: "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
           isReactieOp: null
           bijlagen: []
 
@@ -1516,9 +1516,9 @@ components:
           description: URL van de gespreksdeelname.
         gesprek:
           type: string
-          format: uuid
-          description: UUID van het gesprek waaraan wordt deelgenomen.
-          example: "095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
+          format: uri
+          description: URL van het gesprek waaraan wordt deelgenomen.
+          example: "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
         type:
           type: string
           enum:
@@ -1528,13 +1528,13 @@ components:
           example: partij
         partij:
           type: string
-          format: uuid
+          format: uri
           nullable: true
           description: >
-            UUID-referentie naar de Partij (Klantinteracties API), bij `type`
+            URL-referentie naar de Partij (Klantinteracties API), bij `type`
             partij. Een verwijzing, geen persoonsgegeven: een afnemer herkent er
             de eigen deelname aan.
-          example: "550e8400-e29b-41d4-a716-446655440000"
+          example: "https://klantinteracties.example.com/api/v1/partijen/550e8400-e29b-41d4-a716-446655440000"
         actor:
           type: string
           format: uri
