@@ -19,6 +19,7 @@ info:
     - `POST /gespreksdeelnames` — deelname aan een bestaand gesprek toevoegen
     - `POST /gespreksdeelnames/{uuid}/eindigen` — deelname beëindigen
     - `POST /gespreksbijdragen/{uuid}/gelezen` — gespreksbijdrage als gelezen markeren
+    - `POST /gespreksbijdragen/{uuid}/redigeren` — gespreksbijdrage redigeren (beheer)
     - `GET /events` — realtime wijzigingen volgen (Server-Sent Events)
 
     Alle overige operaties uit de volledige MijnGesprekken-standaard 0.2.1
@@ -48,6 +49,68 @@ info:
     implementatie zonder `/events` blijft een geldige implementatie van deze
     API; clients vallen dan terug op periodiek opnieuw ophalen. De algemene
     regels staan in `patterns/event-stream`.
+
+    ## Notificaties (optioneel)
+
+    `/events` is de norm voor het volgen van wijzigingen. Een registratie
+    mag daarnaast ZGW-notificaties publiceren (Notificaties API), voor
+    afnemers die al een abonnement gebruiken. Doet ze dat, dan gelden deze
+    afspraken, zodat afnemers niet per leverancier iets anders krijgen:
+
+    - kanaal `gesprekken`, `hoofdObject` is de URL van het gesprek,
+      `resource` is `gesprek`, `gespreksbijdrage`, `gespreksdeelname` of
+      `gelezengespreksbijdrage`, `resourceUrl` de URL van die resource;
+    - `actie` `create` bij aanmaken, `update` bij eindigen, `destroy` bij
+      verwijderen en redigeren;
+    - kenmerken:
+
+    | kenmerk | inhoud |
+    |---|---|
+    | `aanleidingZaak` | URL van de zaak, of leeg |
+    | `deelnemerPartijen` | URL's van de Partijen met een actieve deelname, gescheiden door komma's |
+    | `deelnemerActoren` | URL's van de Actoren met een actieve deelname, gescheiden door komma's |
+    | `verzenderType` | `partij` of `actor`, alleen bij een gespreksbijdrage |
+    | `gebeurtenis` | het laatste deel van het eventtype: `aangemaakt`, `beeindigd`, `gelezen`, `verwijderd` of `geredigeerd` |
+    | `eventId` | het CloudEvent-`id` van hetzelfde event op `/events`; afnemers die beide gebruiken, ontdubbelen hierop |
+
+    Een notificatie bevat nooit de tekst van een bijdrage of
+    identificerende gegevens van een deelnemer, omdat iedere abonnee van
+    het kanaal haar ontvangt.
+
+    ## Autorisatie
+
+    Deze API legt scopes vast, los van het tokenmechanisme (ZGW-JWT,
+    `patterns/federated-auth` of een andere afspraak uit de
+    autorisatiethread):
+
+    | scope | operaties |
+    |---|---|
+    | `gesprekken.lezen` | `GET /gesprekken`, `POST /gesprekken/zoek`, `GET /gesprekken/{uuid}`, `GET /events` |
+    | `gesprekken.aanmaken` | `POST /gesprekken`, `POST /gespreksbijdragen` |
+    | `gesprekken.bijwerken` | `POST /gespreksdeelnames`, `POST /gesprekken/{uuid}/eindigen`, `POST /gespreksdeelnames/{uuid}/eindigen`, `POST /gespreksbijdragen/{uuid}/gelezen` |
+    | `gesprekken.redigeren` | `POST /gespreksbijdragen/{uuid}/redigeren` |
+
+    `gesprekken.redigeren` is voor beheer, niet voor deelnemers. Welke
+    gesprekken een aanroeper mag zien (autorisatie per gesprek, ook bij
+    vertegenwoordiging) is nog niet vastgelegd; dat volgt uit de
+    autorisatiethread. Een scope geeft geen toegang tot gesprekken waaraan
+    de aanroeper niet mag deelnemen.
+
+    ## Bewaren, verwijderen en redigeren
+
+    Een gespreksbijdrage wordt niet gewijzigd of door een deelnemer
+    verwijderd: verstuurd is verstuurd. Er is daarom geen `PATCH` of
+    `DELETE`.
+
+    - **Verwijderen** doet de registratie zelf, na afloop van de
+      bewaartermijn. Daar is geen API-operatie voor; afnemers zien het als
+      `nl.vng.gesprekken.gesprek.verwijderd` op `/events`.
+    - **Redigeren** is een beheeroperatie voor een bijdrage die er niet in
+      had mogen staan (bijvoorbeeld een BSN in de tekst):
+      `POST /gespreksbijdragen/{uuid}/redigeren` met scope
+      `gesprekken.redigeren`. De bijdrage verdwijnt, ook uit de
+      eventhistorie, en afnemers krijgen
+      `nl.vng.gesprekken.gespreksbijdrage.geredigeerd`.
 
     Versie: next (ontwikkeling)
   version: "next"
@@ -226,6 +289,13 @@ paths:
         deelnemen.
 
         Vervolgbijdragen worden toegevoegd via `POST /gespreksbijdragen`.
+
+        Zowel de gemeente als de klant kan een gesprek starten (CIM:
+        "Het gesprek wordt gestart door de gemeente, of de klant van de
+        gemeente"). Start de klant, dan is `eersteBijdrage.verzender` een
+        deelname van `type` `partij` en is de gemeente (een Actor) de
+        ontvanger. Of een MijnOmgeving die mogelijkheid toont, is een keuze
+        van de interface.
       tags:
         - Gesprekken
       requestBody:
@@ -405,6 +475,11 @@ paths:
         Beëindigt het gesprek: zet `momentEindeGesprek` op het huidige moment.
         Er is geen requestbody nodig — het systeem stelt het moment vast, net
         zoals `aanvangsmomentGesprek` bij het aanmaken van het gesprek.
+
+        Iedere actieve deelnemer met scope `gesprekken.bijwerken` mag het
+        gesprek beëindigen. Of een burger dat in de interface kan, beslist de
+        MijnOmgeving. Automatisch sluiten na een termijn is een taak van de
+        registratie, buiten de API.
       tags:
         - Gesprekken
       parameters:
@@ -501,6 +576,63 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GelezenGespreksbijdrage'
+        "400":
+          $ref: '#/components/responses/400'
+        "401":
+          $ref: '#/components/responses/401'
+        "403":
+          $ref: '#/components/responses/403'
+        "404":
+          $ref: '#/components/responses/404'
+        "500":
+          $ref: '#/components/responses/500'
+      security:
+        - bearerAuth: []
+
+  /gespreksbijdragen/{uuid}/redigeren:
+    post:
+      operationId: gespreksbijdragen_redigeren
+      summary: Gespreksbijdrage redigeren (beheer)
+      description: >
+        Verwijdert een gespreksbijdrage die er niet had mogen staan, ook uit
+        de eventhistorie. Bedoeld voor beheer, met scope
+        `gesprekken.redigeren`; een deelnemer kan een bijdrage niet
+        wijzigen of verwijderen.
+
+        Na het redigeren geeft `GET /gesprekken/{uuid}` de bijdrage niet
+        meer, en is er geen leesregistratie of bijlage meer aan gekoppeld.
+        Een `isReactieOp` die naar de bijdrage verwijst, blijft staan maar
+        leidt niet meer naar een resource. Afnemers krijgen
+        `nl.vng.gesprekken.gespreksbijdrage.geredigeerd` met de cursors van
+        de events waarvan de inhoud is verwijderd; zij verwijderen die
+        inhoud ook uit hun eigen opslag. De documenten van bijlagen staan in
+        de Documenten API en vallen buiten deze operatie.
+
+        `reden` wordt vastgelegd in de audittrail van de registratie en
+        komt niet in het event.
+      tags:
+        - Gespreksbijdragen
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          description: UUID van de te redigeren gespreksbijdrage.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RedactieCreate'
+      responses:
+        "200":
+          description: Geredigeerd
+          content:
+            application/json:
+              schema:
+                $ref: '../../../patterns/event-stream/next.yaml#/schemas/Redactie'
         "400":
           $ref: '#/components/responses/400'
         "401":
@@ -635,10 +767,15 @@ paths:
         | `nl.vng.gesprekken.gespreksdeelname.aangemaakt` | `ontvanger` bij `POST /gesprekken`, `POST /gespreksdeelnames`, `nieuweDeelname` | `GespreksdeelnameEvent` |
         | `nl.vng.gesprekken.gespreksdeelname.beeindigd` | `POST /gespreksdeelnames/{uuid}/eindigen` | `GespreksdeelnameEvent` |
         | `nl.vng.gesprekken.gespreksbijdrage.gelezen` | `POST /gespreksbijdragen/{uuid}/gelezen` | `GelezenGespreksbijdrage` |
-        | `nl.vng.gesprekken.gespreksbijdrage.geredigeerd` | bijdrage uit de historie verwijderd, bijvoorbeeld omdat die gegevens bevatte die er niet in hoorden (beheerhandeling) | `Redactie` |
+        | `nl.vng.gesprekken.gespreksbijdrage.geredigeerd` | `POST /gespreksbijdragen/{uuid}/redigeren` | `Redactie` |
 
         Bij `geredigeerd` verwijdert de client de inhoud van de genoemde
         events uit zijn eigen opslag (zie `Redactie` in het pattern).
+
+        **Gelezen.** `gespreksbijdrage.gelezen` gaat naar iedere ontvanger
+        van het gesprek, ook als alleen de medewerker een leesbevestiging
+        ziet. De stroom filtert niet per rol: het event bevat geen gevoelige
+        gegevens, en wat getoond wordt, kiest de interface.
 
         **Privacy.** Deelname-events bevatten geen `bsn`, `rsin`,
         `kvkNummer`, `vestigingsnummer` of `emailadres`, omdat alle deelnemers
@@ -1209,6 +1346,21 @@ components:
         - tekstGespreksBijdrage
         - gesprek
         - verzender
+
+    RedactieCreate:
+      type: object
+      description: Aanvraag om een gespreksbijdrage te redigeren.
+      required:
+        - reden
+      properties:
+        reden:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: >
+            Waarom de bijdrage wordt geredigeerd, voor de audittrail. Komt niet
+            in het event.
+          example: "Bijdrage bevatte een BSN van een derde."
 
     # ───── GESPREKSDEELNAME ─────────────────────────────────────────────────
     # Een gespreksdeelname bestaat uitsluitend in de context van één gesprek
