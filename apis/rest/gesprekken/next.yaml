@@ -1055,7 +1055,11 @@ components:
       properties:
         tekstGespreksBijdrage:
           type: string
-          description: De tekst van de gespreksbijdrage.
+          minLength: 1
+          maxLength: 5000
+          description: >
+            De tekst van de gespreksbijdrage, ten hoogste 5000 tekens. Een
+            MijnOmgeving mag in de interface een kortere grens hanteren.
           example: "Goedemorgen, ik wil graag informatie over de aanvraagprocedure."
         gesprek:
           type: string
@@ -1143,7 +1147,9 @@ components:
       properties:
         tekstGespreksBijdrage:
           type: string
-          description: De tekst van de eerste gespreksbijdrage.
+          minLength: 1
+          maxLength: 5000
+          description: De tekst van de eerste gespreksbijdrage, ten hoogste 5000 tekens.
           example: "Goedemorgen, ik wil graag informatie over de aanvraagprocedure."
         bijlagen:
           type: array
@@ -1225,13 +1231,22 @@ components:
         (burger, organisatie) of een Actor (medewerker, systeem) betreft; in
         beide gevallen wordt in dezelfde aanvraag een nieuwe Gespreksdeelname
         aangemaakt op basis van de bijbehorende referentie (`partij`
-        respectievelijk `actor`), aangevuld met `naam` en `emailadres`. Een
+        respectievelijk `actor`), aangevuld met `naam` als weergavenaam. Een
         deelname bestaat alleen binnen dit ene gesprek; de Partij/Actor zelf
         kan aan meerdere gesprekken deelnemen.
+
+        **Verwijzen is de regel.** Gegevens over de persoon of organisatie
+        staan bij de Partij of Actor in Klantinteracties, niet in de
+        deelname. Een MijnOmgeving of zaaksysteem dat een e-mailadres nodig
+        heeft (bijvoorbeeld voor een melding van een nieuwe bijdrage), haalt
+        dat uit de digitale adressen van de Partij (`/digitaleadressen` in de
+        Klantinteracties API). `emailadres`, `bsn`, `rsin`, `kvkNummer` en
+        `vestigingsnummer` zijn optioneel, voor registraties die (nog) geen
+        Klantinteracties gebruiken. Ze komen nooit in events en niet in
+        `GesprekDetail`.
       required:
         - type
         - naam
-        - emailadres
       properties:
         type:
           type: string
@@ -1247,7 +1262,9 @@ components:
           description: >
             URL-referentie naar de Partij (Klantinteracties API) waarvoor een
             nieuwe Gespreksdeelname wordt aangemaakt. Verplicht wanneer `type`
-            gelijk is aan `partij`.
+            gelijk is aan `partij`, tenzij de registratie geen Klantinteracties
+            gebruikt; dan identificeren de optionele velden hieronder de
+            deelnemer.
           example: "https://klantinteracties.example.com/api/v1/partijen/550e8400-e29b-41d4-a716-446655440000"
         actor:
           type: string
@@ -1260,12 +1277,16 @@ components:
           example: "https://klantinteracties.example.com/api/v1/actoren/pqr678"
         naam:
           type: string
-          description: Naam van de deelnemer.
+          description: Weergavenaam van de deelnemer in het gesprek.
           example: "Jan Jansen"
         emailadres:
           type: string
           format: email
-          description: E-mailadres van de deelnemer.
+          nullable: true
+          description: >
+            Optioneel e-mailadres van de deelnemer, voor registraties zonder
+            Klantinteracties. Bij voorkeur komt het e-mailadres uit de
+            digitale adressen van de Partij.
           example: "jan.jansen@example.com"
         bsn:
           type: string
@@ -1373,7 +1394,6 @@ components:
         - gesprek
         - type
         - naam
-        - emailadres
         - aanvangsmomentDeelname
 
     # ───── GELEZEN GESPREKSBIJDRAGE ─────────────────────────────────────────
