@@ -32,6 +32,17 @@ info:
     Het gesprek is het onderwerp; een zaak is hooguit de aanleiding. Eén zaak
     kan daarom aanleiding zijn voor meerdere gesprekken.
 
+    ## Aanleidingen
+
+    Het informatiemodel kent vier mogelijke aanleidingen, elk [0..1]: een
+    ZAAK, een THEMA, een PRODUCT/DIENST en een AGENDA-AFSPRAAK. De API
+    heeft voor elk een optioneel veld (`aanleidingZaak`,
+    `aanleidingThema`, `aanleidingProductDienst`,
+    `aanleidingAgendaAfspraak`). **In de MVP is `aanleidingZaak`
+    verplicht**: een registratie mag een gesprek zonder zaak weigeren met
+    `400`. Filters, routering (`aanleidingzaak` in events) en kenmerken
+    gaan in de MVP alleen over de zaak.
+
     ## Realtime: snapshot + events
 
     Conform ADR-0002 volgt een client wijzigingen in twee stappen:
@@ -753,7 +764,7 @@ paths:
         een commentaarregel (`: ping`) om de verbinding open te houden.
         `subject` is altijd de URL van het gesprek waarop het event betrekking
         heeft. Het extensieattribuut `aanleidingzaak` bevat de zaak van dat
-        gesprek.
+        gesprek, als het er een heeft.
 
         **Eventtypes.**
 
@@ -861,7 +872,45 @@ components:
           description: >
             URL-referentie naar de ZAAK (ZGW Zaken API) die aanleiding is
             voor dit gesprek. Een zaak kan aanleiding zijn voor meerdere gesprekken.
+            Optioneel in het schema; in de MVP verplicht (zie "Aanleidingen").
           example: "https://zaken.example.com/api/v1/zaken/def456"
+        aanleidingThema:
+          type: string
+          format: uri
+          nullable: true
+          description: >
+            URL-referentie naar het THEMA dat aanleiding is voor dit gesprek.
+            Welke registratie thema's levert, is nog niet vastgesteld.
+          example: null
+        aanleidingProductDienst:
+          type: string
+          format: uri
+          nullable: true
+          description: >
+            URL-referentie naar het PRODUCT of de DIENST die aanleiding is
+            voor dit gesprek, bijvoorbeeld een product in de Producten API.
+          example: null
+        aanleidingAgendaAfspraak:
+          type: string
+          format: uri
+          nullable: true
+          description: >
+            URL-referentie naar de AGENDA-AFSPRAAK (Agenda API) die aanleiding
+            is voor dit gesprek.
+          example: null
+        contactmoment:
+          type: string
+          format: uri
+          nullable: true
+          description: >
+            Optioneel: URL-referentie naar het klantcontact (Klantinteracties
+            API) waarop dit gesprek betrekking heeft. Het informatiemodel zegt
+            dat een gesprek precies één CONTACTMOMENT heeft; de werkgroep
+            besloot eerder dat een gesprek zelf geen contactmoment is. Open
+            punt: of een gesprek altijd een klantcontact krijgt, en wie dat
+            aanmaakt. Tot dat besloten is, is het veld optioneel en maakt de
+            registratie het niet zelf aan.
+          example: null
 
     GesprekCreate:
       allOf:
@@ -885,7 +934,6 @@ components:
               $ref: '#/components/schemas/EersteGespreksbijdrageCreate'
       required:
         - gespreksonderwerp
-        - aanleidingZaak
 
     Gesprek:
       allOf:
@@ -940,7 +988,6 @@ components:
         - referentie
         - aanvangsmomentGesprek
         - gespreksonderwerp
-        - aanleidingZaak
 
     GesprekDetail:
       description: >
@@ -1639,7 +1686,8 @@ components:
               format: uri
               description: >
                 CloudEvent-extensieattribuut: de ZAAK (Zaken API) die
-                aanleiding is voor het gesprek. Een afnemer kan zo elk event
+                aanleiding is voor het gesprek. Ontbreekt als het gesprek geen
+                zaak als aanleiding heeft. Een afnemer kan zo elk event
                 zonder extra opvraag aan de zaak koppelen, bijvoorbeeld om de
                 zaakpagina van de MijnOmgeving te verversen.
               example: "https://zaken.example.com/api/v1/zaken/def456"
