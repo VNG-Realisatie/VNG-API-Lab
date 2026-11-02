@@ -81,9 +81,13 @@ paths:
       operationId: gesprekken_list
       summary: Lijst van gesprekken ophalen
       description: >
-        Geeft een gepagineerde lijst van alle gesprekken terug. Naast filters
-        op het gesprek zelf kan ook gefilterd worden op attributen van een
-        deelname (`gespreksdeelname*`).
+        Geeft een gepagineerde lijst van alle gesprekken terug, nieuwste
+        eerst (`aanvangsmomentGesprek` aflopend). Naast filters op het
+        gesprek zelf kan ook gefilterd worden op attributen van een deelname
+        (`gespreksdeelname*`).
+
+        Paginering met een cursor (`patterns/pagination`, next): volg de
+        `next`-link tot die `null` is. Filters blijven in die link staan.
 
         Filters op persoonsgegevens (`gespreksdeelname__bsn`,
         `gespreksdeelname__emailadres`, `gespreksdeelname__naam`) zijn hier
@@ -93,8 +97,8 @@ paths:
       tags:
         - Gesprekken
       parameters:
-        - $ref: '../../../patterns/pagination/0.0.1.yaml#/parameters/page'
-        - $ref: '../../../patterns/pagination/0.0.1.yaml#/parameters/pageSize'
+        - $ref: '../../../patterns/pagination/next.yaml#/parameters/cursor'
+        - $ref: '../../../patterns/pagination/next.yaml#/parameters/pageSize'
         - name: referentie
           in: query
           description: Filter op de unieke referentie van het gesprek.
@@ -267,7 +271,11 @@ paths:
         `aanvangsmomentGesprek`, en de `gespreksdeelname*`-velden).
 
         Geeft, net als `GET /gesprekken`, een gepagineerde `GesprekList`
-        terug.
+        terug, met cursor-paginering. De `next`-link bevat alleen `cursor` en
+        `pageSize`: stuur voor de volgende pagina dezelfde body naar die URL.
+        Een cursor hoort bij één zoekopdracht; bij een andere body geeft de
+        server `400`. Zonder `sorteer` is de volgorde
+        `-aanvangsmomentGesprek`.
 
         De grammatica is bewust begrensd (ADR-0003): operatoren `eq`, `in`,
         `gte` en `lte`, ten hoogste twee niveaus nesting (een `en`/`of` met
@@ -277,8 +285,8 @@ paths:
       tags:
         - Gesprekken
       parameters:
-        - $ref: '../../../patterns/pagination/0.0.1.yaml#/parameters/page'
-        - $ref: '../../../patterns/pagination/0.0.1.yaml#/parameters/pageSize'
+        - $ref: '../../../patterns/pagination/next.yaml#/parameters/cursor'
+        - $ref: '../../../patterns/pagination/next.yaml#/parameters/pageSize'
       requestBody:
         required: true
         content:
@@ -879,9 +887,12 @@ components:
           example: null
 
     GesprekList:
-      description: Gepagineerde lijst van gesprekken (zie `patterns/pagination`).
+      description: >
+        Gepagineerde lijst van gesprekken met een cursor (zie
+        `patterns/pagination`, `CursorPaginatedBase`). Er is geen `previous`;
+        `count` is optioneel.
       allOf:
-        - $ref: '../../../patterns/pagination/0.0.1.yaml#/schemas/PaginatedBase'
+        - $ref: '../../../patterns/pagination/next.yaml#/schemas/CursorPaginatedBase'
         - type: object
           properties:
             results:
@@ -1591,28 +1602,28 @@ components:
       content:
         application/problem+json:
           schema:
-            $ref: '../../../schemas/fout/v0.0.1.json#/$defs/Fout'
+            $ref: '../../../schemas/fout/next.json#/$defs/Fout'
     "401":
       description: Niet geauthenticeerd
       content:
         application/problem+json:
           schema:
-            $ref: '../../../schemas/fout/v0.0.1.json#/$defs/Fout'
+            $ref: '../../../schemas/fout/next.json#/$defs/Fout'
     "403":
       description: Geen toegang
       content:
         application/problem+json:
           schema:
-            $ref: '../../../schemas/fout/v0.0.1.json#/$defs/Fout'
+            $ref: '../../../schemas/fout/next.json#/$defs/Fout'
     "404":
       description: Niet gevonden
       content:
         application/problem+json:
           schema:
-            $ref: '../../../schemas/fout/v0.0.1.json#/$defs/Fout'
+            $ref: '../../../schemas/fout/next.json#/$defs/Fout'
     "500":
       description: Interne serverfout
       content:
         application/problem+json:
           schema:
-            $ref: '../../../schemas/fout/v0.0.1.json#/$defs/Fout'
+            $ref: '../../../schemas/fout/next.json#/$defs/Fout'
