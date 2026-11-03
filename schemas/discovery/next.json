@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Service Discovery",
+  "description": "Minimaal, generiek contract: vertelt een client waar een service leeft (`baseUrl`) en waar de volledige contractbeschrijving staat (`specUrl`) — niets meer. Het manifest dupliceert bewust geen operaties, schemas of security-informatie: die staan al canoniek in de OpenAPI-spec achter `specUrl` (inclusief `components.securitySchemes`, dus ook hoe te authenticeren). Vergelijkbaar in geest met RFC 8414 (OAuth Authorization Server Metadata) — maar dat beschrijft één autorisatieserver; dit beschrijft een register van databronnen. Bewust GEEN OpenAPI-document zelf: OAS beschrijft de vorm van één API, dit manifest beschrijft een lijst databronnen. Géén rol- of relevantie-filtering: welke data een client daadwerkelijk aantreft blijft de verantwoordelijkheid van de resource zelf. Het schema is bewust niet gesloten (`additionalProperties` niet verboden): een specifieke deployment mag eigen velden toevoegen (bijv. een audience-waarde voor een OAuth-flow) zonder dit kerncontract te breken — zulke velden zijn dan per definitie implementatie-specifiek, geen onderdeel van wat elke client hoeft te begrijpen.",
+  "$defs": {
+    "ResourceEntry": {
+      "type": "object",
+      "description": "Eén databron: welke service hij levert, waar hij draait, en waar de volledige contractbeschrijving te vinden is.",
+      "required": ["service", "baseUrl", "specUrl"],
+      "properties": {
+        "service": {
+          "type": "string",
+          "description": "De sleutel waarmee een client opzoekt 'welk systeem moet ik bellen voor mijn Taken-tabblad'. Vrij te kiezen door de aanbieder; geen vaste waardenlijst.",
+          "example": "taken"
+        },
+        "baseUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Basis-URL waar deze service bereikbaar is.",
+          "example": "http://localhost:3000/api/federated"
+        },
+        "specUrl": {
+          "type": "string",
+          "format": "uri-reference",
+          "description": "URL naar de volledige OpenAPI-specificatie: operaties, request/response-vormen, én hoe te authenticeren (`components.securitySchemes`). Canonieke bron — het manifest dupliceert dit bewust niet. Root-relatieve paden resolven tegen de docs-site van dit lab, niet noodzakelijk tegen `baseUrl` — dat kan een heel andere host zijn dan waar de spec gedocumenteerd staat.",
+          "example": "/docs/bundled/apis_rest_taken_next.yaml"
+        },
+        "label": {
+          "type": "string",
+          "description": "Optioneel: mensleesbare naam voor bijvoorbeeld een instellingenscherm. Bij ontbreken kan een client terugvallen op `info.title` uit de spec achter `specUrl`.",
+          "example": "Mijn taken"
+        }
+      }
+    },
+    "ResourceRegistry": {
+      "type": "object",
+      "description": "Het manifest zelf: response-vorm van GET /.well-known/federated-resources.",
+      "required": ["generatedAt", "resources"],
+      "properties": {
+        "gemeente": {
+          "type": "string",
+          "description": "Optioneel: naam van de aanbiedende organisatie, voor weergavedoeleinden.",
+          "example": "Gemeente Voorbeeld (demo)"
+        },
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Tijdstip waarop dit manifest is opgesteld. Clients mogen dit cachen; een korte TTL (minuten, geen uren) wordt aangeraden zodat een nieuwe/verdwenen service snel zichtbaar wordt zonder een deploy van de client."
+        },
+        "resources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ResourceEntry" }
+        }
+      }
+    }
+  }
+}
