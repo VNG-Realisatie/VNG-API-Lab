@@ -47,6 +47,19 @@ mock-gereedheid, inconsistenties, onnodige complexiteit en geprioriteerde fixes.
 
 ## taken/next (MijnTaken)
 
+**Omgezet naar het gedeelde skelet (5 oktober 2026), ✅ toegepast:**
+- `POST /context/zoek` met `klantId` en `include` vervangen door `GET /taken` met filters
+  `context` (URN), `status` en paginering, envelop `{count, next, previous, results}`.
+- Burger uit het token (`patterns/federated-auth`, scope `taken:lezen`); andermans taak geeft `403`.
+- Genest `allOf` in `Taak` opgeheven: `uitvoering.definitie` is een optioneel veld van
+  `UitvoeringBeknopt`. (Respect keurde een detailrespons met `definitie` anders af.)
+- Detailvoorbeeld toegevoegd dat overeenkomt met het eerste overzichtsvoorbeeld.
+- Gedrag getest met `aansluitprofielen/mijntaken/mijntaken-next.arazzo.yaml`, inclusief
+  "taken bij zaak" via de URN uit MijnZaken.
+
+Hieronder de oorspronkelijke feedback; de punten over `include`/`ContextResultaat`, `klantId`
+en het geneste `allOf` zijn hiermee opgelost.
+
 **Mock-gereedheid:** ✅ happy path werkt — `POST /context/zoek` + `GET /taken/{uuid}`
 geven met bearer + `Prefer: code=200` schone, samenhangende taken-data uit de
 schema-voorbeelden. Error-responses zijn garbage (rode draad #2).
@@ -157,14 +170,24 @@ static examples correct (UTC `Z`). **Maar:** alleen een **`fysiek`-voorbeeld**; 
 
 ## zaken/next (MijnZaken)
 
-**Mock-gereedheid:** ✅ happy path werkt — `POST /zaken/zoek` + `GET /zaken/{uuid}` geven met bearer + `Prefer: code=200` schone, samenhangende zaken-data uit de schema-voorbeelden. Fout-responses gebruiken het gedeelde `Fout`-schema met correcte HTTP code voorbeelden.
+**Verbeterslag (5 oktober 2026), ✅ toegepast:**
+- `klantId` verwijderd. De burger komt uit het token (`patterns/federated-auth`, scope
+  `zaken:lezen`); andermans zaak geeft `403`.
+- `POST /zaken/zoek` vervangen door `GET /zaken` met `status`-filter en paginering
+  (`count/next/previous/results`, `page`/`pageSize`), zoals `gesprekken`.
+- Presentatie uit de API: `deadlineText` wordt `deadline` (date-time), document `grootte`
+  ("2000 kB") wordt `bestandsgrootte` (bytes), `type` ("pdf") wordt `formaat` (MIME-type).
+- Documenten hebben een `uuid` en `downloadUrl`; `bron` is een enum (`burger`, `organisatie`).
+- `status` is `open`/`gesloten`; de inhoudelijke stap staat in `huidigeStatus`, ook in het
+  overzicht.
+- Voorbeelden kloppen onderling: overzicht en detail van dezelfde zaak hebben dezelfde
+  `datumAanvraag` (was 2024-10-17 tegen 2022-10-17).
+- Gedrag wordt getest met `aansluitprofielen/mijnzaken/mijnzaken-next.arazzo.yaml`.
 
-**Inconsistenties**
-- Veldnaam `uuid` is gebruikt in plaats van `id` (rode draad #6).
-- Veld `datumAanvraag` is in NL, terwijl `status`, `uuid` en `openstaandeTaak` / `statushistorie` een mix van NL/EN zijn (bijv. `deadlineText`, `actieUrl`).
-
-**Onnodige complexiteit / Overige opmerkingen**
-- Alle documenten en contactmomenten worden direct embedded in het `ZaakDetail` object teruggegeven. Dit is erg handig voor de frontend, maar kan bij grotere dossiers schaalbaarheidsproblemen opleveren als er geen aparte endpoints of sub-resources voor zijn.
+**Nog open**
+- Veldnaam `uuid` in plaats van `id` (rode draad #6), net als in de andere next-API's.
+- Documenten en contactmomenten zitten embedded in `ZaakDetail`; bij grote dossiers zijn
+  aparte sub-resources beter.
 
 ---
 

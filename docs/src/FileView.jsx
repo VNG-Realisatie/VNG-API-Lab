@@ -3,6 +3,7 @@ import { marked } from "marked";
 import yaml from "js-yaml";
 import UmlDiagram from "./UmlDiagram";
 import ResourceTopBar from "./ResourceTopBar";
+import ArazzoView from "./ArazzoView";
 
 function resolveRefLink(currentPath, refPath) {
   if (!refPath) return "#";
@@ -132,7 +133,8 @@ export default function FileView({ path, portalData, navigate }) {
 
   const url = window.location.origin + "/" + path;
   const fileName = path.split("/").pop();
-  const title = schema?.title || fileName.replace(/\.(json|ya?ml)$/, "");
+  const isArazzo = Boolean(schema?.arazzo);
+  const title = schema?.title || (isArazzo && schema.info?.title) || fileName.replace(/\.(json|ya?ml)$/, "");
 
   const isSchema = path.startsWith("schemas/");
   const isPattern = path.startsWith("patterns/");
@@ -187,14 +189,16 @@ export default function FileView({ path, portalData, navigate }) {
 
         {!isSchema && !isPattern && <h2>{title}</h2>}
 
-        {schema && schema.description && (
+        {isArazzo && <ArazzoView doc={schema} path={path} />}
+
+        {schema && !isArazzo && schema.description && (
           <div
             className="schema-description"
             dangerouslySetInnerHTML={{ __html: marked.parse(schema.description) }}
           />
         )}
 
-        {schema && (
+        {schema && !isArazzo && (
           <>
             <div className="schema-url-box" style={{ marginBottom: "20px" }}>
               <span>
@@ -295,8 +299,22 @@ export default function FileView({ path, portalData, navigate }) {
         </>
       )}
 
-      <h3>Ruwe Inhoud</h3>
-      <pre className="raw-content">{content}</pre>
+      {isArazzo ? (
+        <details className="arazzo-raw">
+          <summary>Bekijk YAML</summary>
+          <p>
+            <a href={`/${path}`} download={fileName}>
+              Downloaden
+            </a>
+          </p>
+          <pre className="raw-content">{content}</pre>
+        </details>
+      ) : (
+        <>
+          <h3>Ruwe Inhoud</h3>
+          <pre className="raw-content">{content}</pre>
+        </>
+      )}
       </div>
     </div>
   );
