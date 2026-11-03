@@ -1,8 +1,8 @@
 # Service beschrijving — MijnTaken
 
-| Eigenaar ontwerp | Status `next` in dit lab |
+| Repository | Status `next` in dit lab |
 | --- | --- |
-| Nog vast te stellen | Lab-voorstel, uitgewerkt door het VNG API lab. |
+| [Interactie-APIs](https://github.com/VNG-Realisatie/Interactie-APIs/tree/main/apis/rest/taken) | Lab-voorstel, uitgewerkt door het VNG API lab. |
 
 Dit document beschrijft de functionele en technische specificaties van de **MijnTaken** service.
 Het dient als servicebeschrijving en Definition of Done voor implementatie en integratie van

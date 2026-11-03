@@ -1,8 +1,8 @@
 # Service beschrijving — MijnProducten
 
-| Eigenaar ontwerp | Status `next` in dit lab |
+| Repository | Status `next` in dit lab |
 | --- | --- |
-| Nog vast te stellen | Lab-voorstel, uitgewerkt door het VNG API lab. |
+| [Interactie-APIs](https://github.com/VNG-Realisatie/Interactie-APIs/tree/main/apis/rest/producten) | Lab-voorstel, uitgewerkt door het VNG API lab. |
 
 Dit document beschrijft de functionele en technische specificaties van de **MijnProducten** service.
 Het dient als servicebeschrijving voor implementatie en integratie van producten binnen een

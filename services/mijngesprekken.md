@@ -1,8 +1,8 @@
 # Service beschrijving — MijnGesprekken
 
-| Eigenaar ontwerp | Status `next` in dit lab |
+| Repository | Status `next` in dit lab |
 | --- | --- |
-| Nog vast te stellen. Het informatiemodel (Gesprek, Gespreksbijdrage, enz.) komt mogelijk uit een werkgroep | Lab-voorstel. Let op: de API is registerachtig (volledige CRUD, geen filter op burger) en daarmee nog geen burgergerichte MijnService. |
+| [Interactie-APIs](https://github.com/VNG-Realisatie/Interactie-APIs/tree/main/apis/rest/gesprekken) | Lab-voorstel. Let op: de API is registerachtig (volledige CRUD, geen filter op burger) en daarmee nog geen burgergerichte MijnService. |
 
 Dit document beschrijft de use-cases, uitgangspunten en integratie-afspraken voor **MijnGesprekken**.
 

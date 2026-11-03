@@ -1,8 +1,8 @@
 # Service beschrijving — MijnZaken
 
-| Eigenaar ontwerp | Status `next` in dit lab |
+| Repository | Status `next` in dit lab |
 | --- | --- |
-| Werkgroep MijnZaken (o.a. Vincent van Beek). Afgesproken richting: subset van ZGW 1.6 | Lab-voorstel (VNG API lab), naast de afgesproken subset. Zie [aansluitprofielen](/?file=aansluitprofielen/README.md). |
+| [Interactie-APIs](https://github.com/VNG-Realisatie/Interactie-APIs/tree/main/apis/rest/zaken) | Lab-voorstel (VNG API lab), naast de afgesproken subset. Zie [aansluitprofielen](/?doc=aansluitprofielen/README.md). |
 
 Dit document beschrijft de functionele en technische richting van **MijnZaken**: het tonen van
 persoonsgebonden zaakinformatie binnen een MijnOmgeving. Het dient als servicebeschrijving in

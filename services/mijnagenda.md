@@ -1,8 +1,8 @@
 # Service beschrijving — MijnAgenda
 
-| Eigenaar ontwerp | Status `next` in dit lab |
+| Repository | Status `next` in dit lab |
 | --- | --- |
-| Werkgroep Ontwerp MijnAgenda Service | Werkgroep-ontwerp. Het lab volgt; wijzigingen lopen via de werkgroep. |
+| [MijnAgenda-Respec](https://github.com/VNG-Realisatie/MijnAgenda-Respec) | Werkgroep-ontwerp. Het lab volgt; wijzigingen lopen via de werkgroep. |
 
 Dit document beschrijft de functionele en technische specificaties van de **MijnAgenda** service:
 het tonen van agenda-afspraken van een inwoner of ondernemer binnen een MijnOmgeving. Het dient
@@ -244,7 +244,7 @@ Voor dit patroon worden geen CloudEvents verstuurd.
 
 Het informatiemodel is uitgewerkt in Enterprise Architect en als ReSpec gedocumenteerd:
 
-- ReSpec-repository: [VNG-Realisatie/MijnAgenda-Respec](https://github.com/VNG-Realisatie/MijnAgenda-Respec)
+- ReSpec-repository: [MijnAgenda-Respec](https://github.com/VNG-Realisatie/MijnAgenda-Respec)
 - Lees- en klikbaar informatiemodel: [vng-realisatie.github.io/MijnAgenda-Respec](https://vng-realisatie.github.io/MijnAgenda-Respec/)
 - Feedback via [issues op de ReSpec-repository](https://github.com/VNG-Realisatie/MijnAgenda-Respec/issues)
 

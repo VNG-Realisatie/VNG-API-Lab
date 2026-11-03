@@ -1,6 +1,6 @@
 # Aansluitprofielen: rapport
 
-Gedraaid op 2026-10-26 met Redocly CLI 2.57.0.
+Gedraaid op 2026-11-03 met Redocly CLI 2.57.0.
 
 **50 van 66 checks geslaagd**, 16 bekende fouten, 0 onverwacht.
 
