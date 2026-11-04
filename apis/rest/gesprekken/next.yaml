@@ -1107,7 +1107,67 @@ components:
             results:
               type: array
               items:
-                $ref: '#/components/schemas/Gesprek'
+                $ref: '#/components/schemas/GesprekInLijst'
+
+    GesprekInLijst:
+      description: >
+        Een gesprek in `GesprekList`, met de laatste bijdrage als
+        weergavegegevens (zie `patterns/weergavegegevens`). Zo kan een overzicht
+        het laatste bericht tonen zonder per gesprek het detail op te halen. Een
+        ongelezen-teller staat hier niet in: die verschilt per aanroeper en is
+        nog een open punt.
+      allOf:
+        - $ref: '#/components/schemas/Gesprek'
+        - type: object
+          properties:
+            laatsteBijdrage:
+              $ref: '#/components/schemas/LaatsteBijdrage'
+
+    LaatsteBijdrage:
+      type: object
+      nullable: true
+      readOnly: true
+      description: >
+        Weergavegegevens van de laatst geleverde gespreksbijdrage, of `null`
+        als het gesprek nog geen bijdrage heeft. Alleen in lijsten, die per
+        aanroeper autoriseren; niet in events, omdat `tekstFragment` vrije
+        tekst is.
+      required:
+        - uuid
+        - url
+        - verzender
+        - leveringsmoment
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: UUID van de gespreksbijdrage.
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        url:
+          type: string
+          format: uri
+          description: URL van de gespreksbijdrage.
+          example: "https://gesprekken.example.com/api/v1/gespreksbijdragen/550e8400-e29b-41d4-a716-446655440001"
+        verzender:
+          type: string
+          format: uri
+          description: URL van de gespreksdeelname die de bijdrage heeft geleverd.
+          example: "https://gesprekken.example.com/api/v1/gespreksdeelnames/550e8400-e29b-41d4-a716-446655440000"
+        tekstFragment:
+          type: string
+          maxLength: 200
+          description: De eerste tekens van de bijdrage, ten hoogste 200.
+          example: "Goedemorgen, ik wil graag informatie over de aanvraagprocedure."
+        leveringsmoment:
+          type: string
+          format: date-time
+          description: Het moment dat de gespreksbijdrage is geleverd.
+          example: "2026-03-11T10:05:00Z"
+        aantalBijlagen:
+          type: integer
+          minimum: 0
+          description: Het aantal bijlagen bij de bijdrage.
+          example: 1
 
     # ───── ZOEKEN (POST /gesprekken/zoek) ───────────────────────────────────
     # Structuur voor filtercriteria die niet in de impliciet AND-gecombineerde
@@ -1815,30 +1875,36 @@ components:
     # ───── BIJLAGE ─────────────────────────────────────────────────────────
 
     Bijlage:
-      type: object
       description: |
         Een bijlage bij een gespreksbijdrage, bestaande uit een versienummer en
         een URL naar het bijbehorende Enkelvoudig Informatieobject
         (ZGW Documenten API). Het versienummer correspondeert met de `versie`-waarde
         van het Enkelvoudig Informatieobject op het moment van koppeling.
-      required:
-        - versienummer
-        - enkelvoudigInformatieobject
-      properties:
-        versienummer:
-          type: integer
-          minimum: 1
-          description: >
-            Het versienummer van het Enkelvoudig Informatieobject dat als bijlage
-            is toegevoegd.
-          example: 3
-        enkelvoudigInformatieobject:
-          type: string
-          format: uri
-          description: >
-            URL-referentie naar het Enkelvoudig Informatieobject
-            (ZGW Documenten API).
-          example: "https://documenten.example.com/api/v1/enkelvoudiginformatieobjecten/abc123"
+
+        De registratie vult `titel`, `bestandsnaam`, `formaat` en
+        `bestandsomvang` (zie `patterns/weergavegegevens`), zodat een client
+        een bijlage kan tonen zonder de Documenten API aan te roepen.
+      allOf:
+        - $ref: '../../../patterns/weergavegegevens/next.yaml#/schemas/DocumentWeergave'
+        - type: object
+          required:
+            - versienummer
+            - enkelvoudigInformatieobject
+          properties:
+            versienummer:
+              type: integer
+              minimum: 1
+              description: >
+                Het versienummer van het Enkelvoudig Informatieobject dat als bijlage
+                is toegevoegd.
+              example: 3
+            enkelvoudigInformatieobject:
+              type: string
+              format: uri
+              description: >
+                URL-referentie naar het Enkelvoudig Informatieobject
+                (ZGW Documenten API).
+              example: "https://documenten.example.com/api/v1/enkelvoudiginformatieobjecten/abc123"
 
   responses:
     "400":
