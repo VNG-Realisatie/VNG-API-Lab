@@ -38,10 +38,10 @@ info:
     ZAAK, een THEMA, een PRODUCT/DIENST en een AGENDA-AFSPRAAK. De API
     heeft voor elk een optioneel veld (`aanleidingZaak`,
     `aanleidingThema`, `aanleidingProductDienst`,
-    `aanleidingAgendaAfspraak`). **In de MVP is `aanleidingZaak`
-    verplicht**: een registratie mag een gesprek zonder zaak weigeren met
-    `400`. Filters, routering (`aanleidingzaak` in events) en kenmerken
-    gaan in de MVP alleen over de zaak.
+    `aanleidingAgendaAfspraak`). Geen enkele aanleiding is verplicht. In de
+    MVP wordt in de praktijk de zaak gebruikt; filters, routering
+    (`aanleidingzaak` in events) en kenmerken gaan daarom nu alleen over de
+    zaak.
 
     ## Contactmoment
 
@@ -888,7 +888,8 @@ components:
           description: >
             URL-referentie naar de ZAAK (ZGW Zaken API) die aanleiding is
             voor dit gesprek. Een zaak kan aanleiding zijn voor meerdere gesprekken.
-            Optioneel in het schema; in de MVP verplicht (zie "Aanleidingen").
+            Optioneel; in de MVP wordt in de praktijk de zaak gebruikt (zie
+            "Aanleidingen").
           example: "https://zaken.example.com/api/v1/zaken/def456"
         aanleidingThema:
           type: string
