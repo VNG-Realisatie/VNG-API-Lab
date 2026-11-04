@@ -43,6 +43,18 @@ info:
     `400`. Filters, routering (`aanleidingzaak` in events) en kenmerken
     gaan in de MVP alleen over de zaak.
 
+    ## Contactmoment
+
+    Een gesprek leidt tot precies één CONTACTMOMENT (informatiemodel). Een
+    gesprek is een trage chat, met soms veel tijd tussen de bijdragen: het
+    contactmoment heeft pas plaatsgevonden als het gesprek is afgesloten. Bij
+    de start ontstaat daarom geen klantcontact. Bij het afsluiten, via
+    `POST /gesprekken/{uuid}/eindigen` of automatisch na de termijn, maakt de
+    registratie één klantcontact aan in Klantinteracties en vult `contactmoment`
+    op het gesprek. Het event `nl.vng.gesprekken.gesprek.beeindigd` bevat die
+    URL. Een lopend gesprek is voor het KCC te vinden met de filters op partij
+    en zaak.
+
     ## Realtime: snapshot + events
 
     Conform ADR-0002 volgt een client wijzigingen in twee stappen:
@@ -491,6 +503,10 @@ paths:
         gesprek beëindigen. Of een burger dat in de interface kan, beslist de
         MijnOmgeving. Automatisch sluiten na een termijn is een taak van de
         registratie, buiten de API.
+
+        Bij het afsluiten, ook bij automatisch sluiten, maakt de registratie
+        het klantcontact aan in Klantinteracties en vult `contactmoment`
+        (zie "Contactmoment" in de API-beschrijving).
       tags:
         - Gesprekken
       parameters:
@@ -771,7 +787,7 @@ paths:
         | `type` | Ontstaat bij | `data` |
         |---|---|---|
         | `nl.vng.gesprekken.gesprek.aangemaakt` | `POST /gesprekken` | `Gesprek` |
-        | `nl.vng.gesprekken.gesprek.beeindigd` | `POST /gesprekken/{uuid}/eindigen` | `Gesprek` |
+        | `nl.vng.gesprekken.gesprek.beeindigd` | `POST /gesprekken/{uuid}/eindigen`, automatisch sluiten na de termijn | `Gesprek`, met `contactmoment` |
         | `nl.vng.gesprekken.gesprek.verwijderd` | vernietiging na afloop van de bewaartermijn | `Tombstone` |
         | `nl.vng.gesprekken.gesprek.geredigeerd` | inhoud van het gesprek uit de historie verwijderd (beheerhandeling) | `Redactie` |
         | `nl.vng.gesprekken.gespreksbijdrage.aangemaakt` | `eersteBijdrage` bij `POST /gesprekken`, `POST /gespreksbijdragen` | `Gespreksbijdrage` |
@@ -898,19 +914,6 @@ components:
             URL-referentie naar de AGENDA-AFSPRAAK (Agenda API) die aanleiding
             is voor dit gesprek.
           example: null
-        contactmoment:
-          type: string
-          format: uri
-          nullable: true
-          description: >
-            Optioneel: URL-referentie naar het klantcontact (Klantinteracties
-            API) waarop dit gesprek betrekking heeft. Het informatiemodel zegt
-            dat een gesprek precies één CONTACTMOMENT heeft; de werkgroep
-            besloot eerder dat een gesprek zelf geen contactmoment is. Open
-            punt: of een gesprek altijd een klantcontact krijgt, en wie dat
-            aanmaakt. Tot dat besloten is, is het veld optioneel en maakt de
-            registratie het niet zelf aan.
-          example: null
 
     GesprekCreate:
       allOf:
@@ -981,6 +984,18 @@ components:
                 `POST /gesprekken/{uuid}/eindigen`; niet rechtstreeks op te
                 geven of te wijzigen.
               example: "2026-03-11T10:45:00Z"
+            contactmoment:
+              type: string
+              format: uri
+              nullable: true
+              readOnly: true
+              description: >
+                URL-referentie naar het klantcontact (Klantinteracties API)
+                waartoe dit gesprek heeft geleid. `null` zolang het gesprek
+                loopt. De registratie maakt het klantcontact aan en vult dit
+                veld wanneer het gesprek wordt afgesloten; zie "Contactmoment"
+                in de API-beschrijving. Niet op te geven of te wijzigen.
+              example: "https://klantinteracties.example.com/api/v1/klantcontacten/7c1e2d3f-5b8e-4d21-9a6f-0c1e2d3f4a5b"
         - $ref: '#/components/schemas/GesprekBase'
       required:
         - uuid
