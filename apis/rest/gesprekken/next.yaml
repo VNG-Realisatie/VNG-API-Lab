@@ -98,32 +98,8 @@ info:
     API; clients vallen dan terug op periodiek opnieuw ophalen. De algemene
     regels staan in `patterns/event-stream`.
 
-    ## Notificaties (optioneel)
-
-    `/events` is de norm voor het volgen van wijzigingen. Een registratie
-    mag daarnaast ZGW-notificaties publiceren (Notificaties API), voor
-    afnemers die al een abonnement gebruiken. Doet ze dat, dan gelden deze
-    afspraken, zodat afnemers niet per leverancier iets anders krijgen:
-
-    - kanaal `gesprekken`, `hoofdObject` is de URL van het gesprek,
-      `resource` is `gesprek`, `gespreksbijdrage`, `gespreksdeelname` of
-      `gelezengespreksbijdrage`, `resourceUrl` de URL van die resource;
-    - `actie` `create` bij aanmaken, `update` bij eindigen, `destroy` bij
-      verwijderen en redigeren;
-    - kenmerken:
-
-    | kenmerk | inhoud |
-    |---|---|
-    | `aanleidingZaak` | URL van de zaak, of leeg |
-    | `deelnemerPartijen` | URL's van de Partijen met een actieve deelname, gescheiden door komma's |
-    | `deelnemerActoren` | URL's van de Actoren met een actieve deelname, gescheiden door komma's |
-    | `verzenderType` | `partij` of `actor`, alleen bij een gespreksbijdrage |
-    | `gebeurtenis` | het laatste deel van het eventtype: `aangemaakt`, `beeindigd`, `gelezen`, `verwijderd` of `geredigeerd` |
-    | `eventId` | het CloudEvent-`id` van hetzelfde event op `/events`; afnemers die beide gebruiken, ontdubbelen hierop |
-
-    Een notificatie bevat nooit de tekst van een bijdrage of
-    identificerende gegevens van een deelnemer, omdat iedere abonnee van
-    het kanaal haar ontvangt.
+    ZGW-notificaties horen niet bij deze API. Wie ze nodig heeft, kan buiten
+    deze specificatie een adapter bouwen die de events omzet.
 
     ## Autorisatie
 
