@@ -55,6 +55,9 @@ info:
     URL. Een lopend gesprek is voor het KCC te vinden met de filters op partij
     en zaak.
 
+    Automatisch sluiten is hiermee nodig: zonder afsluiten ontstaat er geen
+    contactmoment. De termijn is nog niet vastgesteld (open punt).
+
     ## Realtime: snapshot + events
 
     Conform ADR-0002 volgt een client wijzigingen in twee stappen:
@@ -317,8 +320,7 @@ paths:
         "Het gesprek wordt gestart door de gemeente, of de klant van de
         gemeente"). Start de klant, dan is `eersteBijdrage.verzender` een
         deelname van `type` `partij` en is de gemeente (een Actor) de
-        ontvanger. Of een MijnOmgeving die mogelijkheid toont, is een keuze
-        van de interface.
+        ontvanger. Dat hoort bij de MVP.
       tags:
         - Gesprekken
       requestBody:
@@ -500,9 +502,9 @@ paths:
         zoals `aanvangsmomentGesprek` bij het aanmaken van het gesprek.
 
         Iedere actieve deelnemer met scope `gesprekken.bijwerken` mag het
-        gesprek beëindigen. Of een burger dat in de interface kan, beslist de
-        MijnOmgeving. Automatisch sluiten na een termijn is een taak van de
-        registratie, buiten de API.
+        gesprek beëindigen, dus ook de inwoner ("vraag beantwoord").
+        Automatisch sluiten na een termijn is een taak van de registratie,
+        buiten de API.
 
         Bij het afsluiten, ook bij automatisch sluiten, maakt de registratie
         het klantcontact aan in Klantinteracties en vult `contactmoment`
