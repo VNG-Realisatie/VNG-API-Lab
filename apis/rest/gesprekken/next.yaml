@@ -58,7 +58,12 @@ info:
     en zaak.
 
     Automatisch sluiten is hiermee nodig: zonder afsluiten ontstaat er geen
-    contactmoment. De termijn is nog niet vastgesteld (open punt).
+    contactmoment. De registratie sluit een gesprek na 3 dagen zonder nieuwe
+    gespreksbijdrage, gerekend vanaf de laatste bijdrage (zonder bijdrage vanaf
+    `aanvangsmomentGesprek`). Dit is de standaardwaarde; een registratie of
+    gemeente mag een andere termijn instellen. Automatisch sluiten werkt als
+    eindigen: `momentEindeGesprek` wordt gezet, `gesprek.beeindigd` volgt, en
+    bij minstens één bijdrage ontstaat het klantcontact.
 
     ## Realtime: snapshot + events
 
@@ -509,8 +514,9 @@ paths:
 
         Iedere actieve deelnemer met scope `gesprekken.bijwerken` mag het
         gesprek beëindigen, dus ook de inwoner ("vraag beantwoord").
-        Automatisch sluiten na een termijn is een taak van de registratie,
-        buiten de API.
+        Automatisch sluiten na de termijn (standaard 3 dagen zonder nieuwe
+        bijdrage) doet de registratie zelf, buiten de API, met hetzelfde
+        resultaat.
 
         Bij het afsluiten, ook bij automatisch sluiten, maakt de registratie
         het klantcontact aan in Klantinteracties en vult `contactmoment`, als
