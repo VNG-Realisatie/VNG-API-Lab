@@ -20,6 +20,8 @@ info:
     - `POST /gespreksdeelnames/{uuid}/eindigen` — deelname beëindigen
     - `POST /gespreksbijdragen/{uuid}/gelezen` — gespreksbijdrage als gelezen markeren
     - `POST /gespreksbijdragen/{uuid}/redigeren` — gespreksbijdrage redigeren (beheer)
+    - `POST /bestanden/upload-sessie` — upload van een bijlage starten
+    - `GET /bestanden/{fileId}` — bestand en downloadlink ophalen
     - `GET /events` — realtime wijzigingen volgen (Server-Sent Events)
 
     Alle overige operaties uit de volledige MijnGesprekken-standaard 0.2.1
@@ -31,6 +33,23 @@ info:
 
     Het gesprek is het onderwerp; een zaak is hooguit de aanleiding. Eén zaak
     kan daarom aanleiding zijn voor meerdere gesprekken.
+
+    ## Bijlagen
+
+    Bijlagen gaan via `patterns/file-upload` (two-step upload met een
+    pre-signed URL), niet via de Documenten API:
+
+    1. `POST /bestanden/upload-sessie` met de metadata geeft een tijdelijke
+       `uploadUrl` en een `bestand`.
+    2. De client stuurt het bestand met `PUT` rechtstreeks naar de `uploadUrl`.
+    3. Zodra `GET /bestanden/{fileId}` status `beschikbaar` geeft, verwijst de
+       client er in `bijlagen` naar, ook bij `eersteBijdrage`.
+
+    De opslag is aan de registratie: elke opslag met pre-signed URL's, zoals
+    S3. Downloaden gaat via de tijdelijke `downloadUrl` van
+    `GET /bestanden/{fileId}`, alleen voor wie het gesprek mag lezen. Een
+    bestand dat aan een bijdrage hangt, verandert niet meer; een bestand dat
+    nergens aan hangt, ruimt de registratie op.
 
     ## Aanleidingen
 
@@ -118,8 +137,8 @@ info:
 
     | scope | operaties |
     |---|---|
-    | `gesprekken.lezen` | `GET /gesprekken`, `POST /gesprekken/zoek`, `GET /gesprekken/{uuid}`, `GET /events` |
-    | `gesprekken.aanmaken` | `POST /gesprekken`, `POST /gespreksbijdragen` |
+    | `gesprekken.lezen` | `GET /gesprekken`, `POST /gesprekken/zoek`, `GET /gesprekken/{uuid}`, `GET /bestanden/{fileId}`, `GET /events` |
+    | `gesprekken.aanmaken` | `POST /gesprekken`, `POST /gespreksbijdragen`, `POST /bestanden/upload-sessie` |
     | `gesprekken.bijwerken` | `POST /gespreksdeelnames`, `POST /gesprekken/{uuid}/eindigen`, `POST /gespreksdeelnames/{uuid}/eindigen`, `POST /gespreksbijdragen/{uuid}/gelezen` |
     | `gesprekken.redigeren` | `POST /gespreksbijdragen/{uuid}/redigeren` |
 
@@ -163,6 +182,8 @@ tags:
     description: Operaties op bijdragen binnen gesprekken.
   - name: Gespreksdeelnames
     description: Operaties op deelname van Partijen en Actoren aan gesprekken.
+  - name: Bestanden
+    description: Upload en download van bijlagen (`patterns/file-upload`).
   - name: Events
     description: Realtime wijzigingen volgen via Server-Sent Events.
 
@@ -647,8 +668,8 @@ paths:
         leidt niet meer naar een resource. Afnemers krijgen
         `nl.vng.gesprekken.gespreksbijdrage.geredigeerd` met de cursors van
         de events waarvan de inhoud is verwijderd; zij verwijderen die
-        inhoud ook uit hun eigen opslag. De documenten van bijlagen staan in
-        de Documenten API en vallen buiten deze operatie.
+        inhoud ook uit hun eigen opslag. De bestanden van de bijlagen
+        verwijdert de registratie mee.
 
         `reden` wordt vastgelegd in de audittrail van de registratie en
         komt niet in het event.
@@ -757,6 +778,72 @@ paths:
                 $ref: '#/components/schemas/Gespreksdeelname'
         "400":
           $ref: '#/components/responses/400'
+        "401":
+          $ref: '#/components/responses/401'
+        "403":
+          $ref: '#/components/responses/403'
+        "404":
+          $ref: '#/components/responses/404'
+        "500":
+          $ref: '#/components/responses/500'
+      security:
+        - bearerAuth: []
+
+  # ─────────────────────────────────────────
+  # BESTANDEN
+  # ─────────────────────────────────────────
+
+  /bestanden/upload-sessie:
+    post:
+      operationId: bestanden_upload_sessie
+      summary: Upload van een bijlage starten
+      description: >
+        Maakt een bestands-record aan en geeft een tijdelijke pre-signed URL
+        terug waar de client het bestand naartoe stuurt (zie
+        `patterns/file-upload`). Daarna kan de client in `bijlagen` naar
+        `bestand.url` verwijzen.
+      tags:
+        - Bestanden
+      requestBody:
+        $ref: '../../../patterns/file-upload/next.yaml#/requestBodies/UploadSessieAanvraag'
+      responses:
+        "201":
+          $ref: '../../../patterns/file-upload/next.yaml#/responses/UploadSessieAangemaakt'
+        "400":
+          $ref: '#/components/responses/400'
+        "401":
+          $ref: '#/components/responses/401'
+        "403":
+          $ref: '#/components/responses/403'
+        "413":
+          $ref: '../../../patterns/file-upload/next.yaml#/responses/PayloadTooLarge'
+        "500":
+          $ref: '#/components/responses/500'
+      security:
+        - bearerAuth: []
+
+  /bestanden/{fileId}:
+    get:
+      operationId: bestanden_read
+      summary: Bestand en downloadlink ophalen
+      description: >
+        Geeft de metadata en status van een bestand, en zodra het beschikbaar is
+        een tijdelijke `downloadUrl`. Alleen voor wie het gesprek van de
+        bijbehorende bijdrage mag lezen, of voor de uploader zolang het bestand
+        nog aan geen bijdrage hangt.
+      tags:
+        - Bestanden
+      parameters:
+        - name: fileId
+          in: path
+          required: true
+          description: De identificatie van het bestand.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          $ref: '../../../patterns/file-upload/next.yaml#/responses/BestandOpgevraagd'
         "401":
           $ref: '#/components/responses/401'
         "403":
@@ -1352,9 +1439,8 @@ components:
         bijlagen:
           type: array
           description: >
-            Bijlagen bij deze gespreksbijdrage, elk bestaande uit een versienummer
-            en een URL naar het bijbehorende Enkelvoudig Informatieobject
-            (ZGW Documenten API).
+            Bijlagen bij deze gespreksbijdrage, elk met een verwijzing naar een
+            bestand (zie "Bijlagen" in de API-beschrijving).
           items:
             $ref: '#/components/schemas/Bijlage'
           default: []
@@ -1428,9 +1514,8 @@ components:
         bijlagen:
           type: array
           description: >
-            Bijlagen bij deze gespreksbijdrage, elk bestaande uit een versienummer
-            en een URL naar het bijbehorende Enkelvoudig Informatieobject
-            (ZGW Documenten API).
+            Bijlagen bij deze gespreksbijdrage, elk met een verwijzing naar een
+            bestand (zie "Bijlagen" in de API-beschrijving).
           items:
             $ref: '#/components/schemas/Bijlage'
           default: []
@@ -1882,35 +1967,24 @@ components:
 
     Bijlage:
       description: |
-        Een bijlage bij een gespreksbijdrage, bestaande uit een versienummer en
-        een URL naar het bijbehorende Enkelvoudig Informatieobject
-        (ZGW Documenten API). Het versienummer correspondeert met de `versie`-waarde
-        van het Enkelvoudig Informatieobject op het moment van koppeling.
+        Een bijlage bij een gespreksbijdrage: een verwijzing naar een bestand met
+        status `beschikbaar` (zie "Bijlagen" in de API-beschrijving). Een ander
+        bestand geeft `400`.
 
-        De registratie vult `titel`, `bestandsnaam`, `formaat` en
+        De registratie vult `titel`, `bestandsnaam`, `contentType` en
         `bestandsomvang` (zie `patterns/weergavegegevens`), zodat een client
-        een bijlage kan tonen zonder de Documenten API aan te roepen.
+        een bijlage kan tonen zonder `GET /bestanden/{fileId}`.
       allOf:
         - $ref: '../../../patterns/weergavegegevens/next.yaml#/schemas/DocumentWeergave'
         - type: object
           required:
-            - versienummer
-            - enkelvoudigInformatieobject
+            - bestand
           properties:
-            versienummer:
-              type: integer
-              minimum: 1
-              description: >
-                Het versienummer van het Enkelvoudig Informatieobject dat als bijlage
-                is toegevoegd.
-              example: 3
-            enkelvoudigInformatieobject:
+            bestand:
               type: string
               format: uri
-              description: >
-                URL-referentie naar het Enkelvoudig Informatieobject
-                (ZGW Documenten API).
-              example: "https://documenten.example.com/api/v1/enkelvoudiginformatieobjecten/abc123"
+              description: URL van het bestand (`bestand.url` uit de upload-sessie).
+              example: "https://gesprekken.example.com/api/v1/bestanden/717815f6-1939-4fd2-93f0-83d25bad154e"
 
   responses:
     "400":

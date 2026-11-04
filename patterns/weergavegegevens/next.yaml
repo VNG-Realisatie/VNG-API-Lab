@@ -13,7 +13,7 @@ description: |
   bevat te weinig om iets te tonen.
 
   **Oplossing.** Verwijst een resource naar iets dat niet meer verandert (een
-  vaste documentversie, een verstuurde bijdrage), dan mag die verwijzing
+  vast bestand of documentversie, een verstuurde bijdrage), dan mag die verwijzing
   weergavegegevens bevatten.
 
   **Regels.**
@@ -44,11 +44,9 @@ description: |
     allOf:
       - $ref: "../../patterns/weergavegegevens/next.yaml#/schemas/DocumentWeergave"
       - type: object
-        required: [versienummer, enkelvoudigInformatieobject]
+        required: [bestand]
         properties:
-          versienummer:
-            type: integer
-          enkelvoudigInformatieobject:
+          bestand:
             type: string
             format: uri
   ```
@@ -57,7 +55,8 @@ schemas:
   DocumentWeergave:
     type: object
     description: |
-      Weergavegegevens van een vaste versie van een document. Alle velden zijn
+      Weergavegegevens van een vast bestand of een vaste documentversie, met
+      dezelfde namen als `Bestand` in `schemas/file-upload`. Alle velden zijn
       optioneel en alleen-lezen.
     properties:
       titel:
@@ -68,16 +67,16 @@ schemas:
       bestandsnaam:
         type: string
         readOnly: true
-        description: Bestandsnaam van deze versie.
+        description: Naam van het bestand inclusief extensie.
         example: "loonstrook-oktober.pdf"
-      formaat:
+      contentType:
         type: string
         readOnly: true
-        description: Mediatype (MIME) van deze versie, bijvoorbeeld voor een icoontje.
+        description: MIME-type, bijvoorbeeld voor een icoontje.
         example: "application/pdf"
       bestandsomvang:
         type: integer
         minimum: 0
         readOnly: true
-        description: Grootte van deze versie in bytes.
+        description: Grootte in bytes.
         example: 184320
