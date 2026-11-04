@@ -11,7 +11,6 @@ info:
 
     Dit gepruned document omvat alleen:
     - `GET /gesprekken` — lijst van gesprekken ophalen
-    - `POST /gesprekken/zoek` — gesprekken zoeken met samengestelde filters (AND/OR, begrensd)
     - `GET /gesprekken/{uuid}` — één gesprek ophalen, met gespreksbijdragen
     - `POST /gesprekken` — gesprek (+ ontvanger(s) + optioneel eerste bijdrage) aanmaken
     - `POST /gesprekken/{uuid}/eindigen` — gesprek beëindigen
@@ -88,8 +87,8 @@ info:
 
     Conform ADR-0002 volgt een client wijzigingen in twee stappen:
 
-    1. **Snapshot**: haal de huidige stand op via `GET /gesprekken`,
-       `POST /gesprekken/zoek` en/of `GET /gesprekken/{uuid}`. Neem de waarde
+    1. **Snapshot**: haal de huidige stand op via `GET /gesprekken` en/of
+       `GET /gesprekken/{uuid}`. Neem de waarde
        van de `Feed-Cursor`-header uit de eerste response.
     2. **Tail**: open `GET /events` met die cursor als `Last-Event-ID`. De
        server levert alle events die na de snapshot zijn ontstaan.
@@ -137,7 +136,7 @@ info:
 
     | scope | operaties |
     |---|---|
-    | `gesprekken.lezen` | `GET /gesprekken`, `POST /gesprekken/zoek`, `GET /gesprekken/{uuid}`, `GET /bestanden/{fileId}`, `GET /events` |
+    | `gesprekken.lezen` | `GET /gesprekken`, `GET /gesprekken/{uuid}`, `GET /bestanden/{fileId}`, `GET /events` |
     | `gesprekken.aanmaken` | `POST /gesprekken`, `POST /gespreksbijdragen`, `POST /bestanden/upload-sessie` |
     | `gesprekken.bijwerken` | `POST /gespreksdeelnames`, `POST /gesprekken/{uuid}/eindigen`, `POST /gespreksdeelnames/{uuid}/eindigen`, `POST /gespreksbijdragen/{uuid}/gelezen` |
     | `gesprekken.redigeren` | `POST /gespreksbijdragen/{uuid}/redigeren` |
@@ -206,11 +205,8 @@ paths:
         Paginering met een cursor (`patterns/pagination`, next): volg de
         `next`-link tot die `null` is. Filters blijven in die link staan.
 
-        Filters op persoonsgegevens (`gespreksdeelname__bsn`,
-        `gespreksdeelname__emailadres`, `gespreksdeelname__naam`) zijn hier
-        bewust niet beschikbaar: queryparameters belanden in logs, caches en
-        browsergeschiedenis. Gebruik daarvoor `POST /gesprekken/zoek`, waar
-        de waarden in de body staan.
+        Filters op persoonsgegevens zijn hier bewust niet beschikbaar:
+        queryparameters belanden in logs, caches en browsergeschiedenis.
       tags:
         - Gesprekken
       parameters:
@@ -368,111 +364,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Gesprek'
-        "400":
-          $ref: '#/components/responses/400'
-        "401":
-          $ref: '#/components/responses/401'
-        "403":
-          $ref: '#/components/responses/403'
-        "500":
-          $ref: '#/components/responses/500'
-      security:
-        - bearerAuth: []
-
-  /gesprekken/zoek:
-    post:
-      operationId: gesprekken_zoeken
-      summary: Gesprekken zoeken met samengestelde filtercriteria
-      description: >
-        Zoekt gesprekken met filtercriteria die niet in de eenvoudige,
-        impliciet AND-gecombineerde queryparameters van `GET /gesprekken`
-        passen — met name AND/OR-combinaties over meerdere velden of
-        meerdere waarden voor hetzelfde veld (bijvoorbeeld
-        `rsin = x OF vestigingsnummer = y`, of "één van deze actor-URL's" via
-        operator `in`).
-        Gebruik dit endpoint alleen wanneer `GET /gesprekken` niet volstaat;
-        voor eenvoudige filters blijft die de voorkeursoperatie.
-
-        De beschikbare `veld`-namen in `filter` komen overeen met de
-        queryparameters van `GET /gesprekken` (`referentie`,
-        `aanvangsmomentGesprek`, en de `gespreksdeelname*`-velden).
-
-        Geeft, net als `GET /gesprekken`, een gepagineerde `GesprekList`
-        terug, met cursor-paginering. De `next`-link bevat alleen `cursor` en
-        `pageSize`: stuur voor de volgende pagina dezelfde body naar die URL.
-        Een cursor hoort bij één zoekopdracht; bij een andere body geeft de
-        server `400`. Zonder `sorteer` is de volgorde
-        `-aanvangsmomentGesprek`.
-
-        De grammatica is bewust begrensd (ADR-0003): operatoren `eq`, `in`,
-        `gte` en `lte`, ten hoogste twee niveaus nesting (een `en`/`of` met
-        voorwaarden of met groepen die zelf alleen voorwaarden bevatten), ten
-        hoogste 10 elementen per groep, en geen negatie. Zo blijft elke
-        zoekopdracht voorspelbaar in kosten en autoriseerbaar per aanroeper.
-      tags:
-        - Gesprekken
-      parameters:
-        - $ref: '../../../patterns/pagination/next.yaml#/parameters/cursor'
-        - $ref: '../../../patterns/pagination/next.yaml#/parameters/pageSize'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GesprekkenZoekopdracht'
-            examples:
-              rsinOfVestigingsnummer:
-                summary: "rsin = x OF vestigingsnummer = y"
-                description: >
-                  Gesprekken waarbij de deelname óf dit RSIN, óf dit
-                  vestigingsnummer heeft.
-                value:
-                  filter:
-                    of:
-                      - veld: gespreksdeelname__rsin
-                        waarde: "123456782"
-                      - veld: gespreksdeelname__vestigingsnummer
-                        waarde: "123456789012"
-              meerdereActoren:
-                summary: Meerdere actor-URL's (operator `in`)
-                description: >
-                  Gesprekken waaraan één van deze drie Actoren heeft
-                  deelgenomen.
-                value:
-                  filter:
-                    veld: gespreksdeelname__actor
-                    operator: in
-                    waarde:
-                      - "https://klantinteracties.example.com/api/v1/actoren/pqr678"
-                      - "https://klantinteracties.example.com/api/v1/actoren/xyz999"
-                      - "https://klantinteracties.example.com/api/v1/actoren/abc123"
-              genestAndOr:
-                summary: "(rsin = x OF vestigingsnummer = y) EN gestart na 2026-01-01"
-                description: >
-                  Combinatie van een OR-groep met een aparte AND-voorwaarde:
-                  het maximum van twee niveaus nesting.
-                value:
-                  filter:
-                    en:
-                      - of:
-                          - veld: gespreksdeelname__rsin
-                            waarde: "123456782"
-                          - veld: gespreksdeelname__vestigingsnummer
-                            waarde: "123456789012"
-                      - veld: aanvangsmomentGesprek
-                        operator: gte
-                        waarde: "2026-01-01T00:00:00Z"
-                  sorteer: "-aanvangsmomentGesprek"
-      responses:
-        "200":
-          description: OK
-          headers:
-            Feed-Cursor:
-              $ref: '../../../patterns/event-stream/next.yaml#/headers/FeedCursor'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GesprekList'
         "400":
           $ref: '#/components/responses/400'
         "401":
@@ -1261,153 +1152,6 @@ components:
           minimum: 0
           description: Het aantal bijlagen bij de bijdrage.
           example: 1
-
-    # ───── ZOEKEN (POST /gesprekken/zoek) ───────────────────────────────────
-    # Structuur voor filtercriteria die niet in de impliciet AND-gecombineerde
-    # queryparameters van GET /gesprekken passen: AND/OR-combinaties over
-    # meerdere velden of meerdere waarden van hetzelfde veld.
-
-    GesprekkenZoekopdracht:
-      type: object
-      description: Zoekopdracht voor `POST /gesprekken/zoek`.
-      required:
-        - filter
-      properties:
-        filter:
-          $ref: '#/components/schemas/ZoekExpressie'
-        sorteer:
-          type: string
-          enum:
-            - aanvangsmomentGesprek
-            - "-aanvangsmomentGesprek"
-          description: >
-            Sorteervolgorde van de resultaten; `-` betekent aflopend.
-          example: "-aanvangsmomentGesprek"
-
-    ZoekExpressie:
-      description: >
-        De wortel van de zoekboom: een enkele voorwaarde (`ZoekVoorwaarde`),
-        of een AND/OR-combinatie (`ZoekEn`/`ZoekOf`). Die combinatie mag
-        voorwaarden bevatten en groepen (`ZoekEnGroep`/`ZoekOfGroep`) die
-        zelf alleen voorwaarden bevatten; dieper nesten kan niet.
-      oneOf:
-        - $ref: '#/components/schemas/ZoekVoorwaarde'
-        - $ref: '#/components/schemas/ZoekEn'
-        - $ref: '#/components/schemas/ZoekOf'
-
-    ZoekVoorwaarde:
-      type: object
-      description: >
-        Eén enkele filtervoorwaarde op een veld. Dezelfde velden als de
-        queryparameters van `GET /gesprekken`, maar hier zonder `__gte`/`__lte`-
-        achtervoegsel — het vergelijkingstype zit in `operator`.
-      required:
-        - veld
-        - waarde
-      properties:
-        veld:
-          type: string
-          enum:
-            - referentie
-            - aanleidingZaak
-            - aanvangsmomentGesprek
-            - gespreksdeelname
-            - gespreksdeelname__type
-            - gespreksdeelname__actor
-            - gespreksdeelname__partij
-            - gespreksdeelname__naam
-            - gespreksdeelname__emailadres
-            - gespreksdeelname__bsn
-            - gespreksdeelname__rsin
-            - gespreksdeelname__kvkNummer
-            - gespreksdeelname__vestigingsnummer
-          description: Het te filteren veld.
-          example: gespreksdeelname__rsin
-        operator:
-          type: string
-          enum:
-            - eq
-            - in
-            - gte
-            - lte
-          default: eq
-          description: >
-            Vergelijkingsoperator. `gte`/`lte` zijn alleen zinvol bij
-            `aanvangsmomentGesprek`. Bij `in` is `waarde` een lijst en
-            voldoet het gesprek als het veld gelijk is aan één van de waarden.
-        waarde:
-          description: >
-            De waarde om op te filteren: een tekst, of bij operator `in` een
-            lijst van ten hoogste 50 teksten.
-          oneOf:
-            - type: string
-            - type: array
-              minItems: 1
-              maxItems: 50
-              items:
-                type: string
-          example: "123456782"
-
-    ZoekEn:
-      type: object
-      description: Waar aan alle elementen moet worden voldaan (AND).
-      required:
-        - en
-      properties:
-        en:
-          type: array
-          minItems: 2
-          maxItems: 10
-          items:
-            $ref: '#/components/schemas/ZoekElement'
-
-    ZoekOf:
-      type: object
-      description: Waar aan minstens één element moet worden voldaan (OR).
-      required:
-        - of
-      properties:
-        of:
-          type: array
-          minItems: 2
-          maxItems: 10
-          items:
-            $ref: '#/components/schemas/ZoekElement'
-
-    ZoekElement:
-      description: >
-        Element binnen `ZoekEn`/`ZoekOf`: een voorwaarde of een groep van
-        alleen voorwaarden.
-      oneOf:
-        - $ref: '#/components/schemas/ZoekVoorwaarde'
-        - $ref: '#/components/schemas/ZoekEnGroep'
-        - $ref: '#/components/schemas/ZoekOfGroep'
-
-    ZoekEnGroep:
-      type: object
-      description: AND-groep op het tweede niveau; bevat alleen voorwaarden.
-      required:
-        - en
-      properties:
-        en:
-          type: array
-          minItems: 2
-          maxItems: 10
-          items:
-            $ref: '#/components/schemas/ZoekVoorwaarde'
-
-    ZoekOfGroep:
-      type: object
-      description: OR-groep op het tweede niveau; bevat alleen voorwaarden.
-      required:
-        - of
-      properties:
-        of:
-          type: array
-          minItems: 2
-          maxItems: 10
-          items:
-            $ref: '#/components/schemas/ZoekVoorwaarde'
 
     # ───── GESPREKSBIJDRAGE ────────────────────────────────────────────────
 
