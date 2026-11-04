@@ -23,7 +23,7 @@ het herbruikbare bouwblok dat eruit volgt.
 | --- | --- | --- | --- |
 | [0001](./0001-federatief-geen-centrale-kluis.md) | Federatief — geen centrale kluis | Voorgesteld | — (richtinggevend; werkt door in 0005 en 0007) |
 | [0002](./0002-levering-snapshot-plus-sse.md) | Levering: snapshot + resumable SSE | Voorgesteld | [`patterns/sync-feed`](../../patterns/sync-feed/next.yaml) (snapshot- en cursorbouwstenen) |
-| [0003](./0003-begrensde-query-grammatica.md) | Begrensde query-grammatica i.p.v. ElasticSearch-DSL | Voorgesteld | [`patterns/sync-feed`](../../patterns/sync-feed/next.yaml) (de cursor-paginering die deze ADR voorschrijft) |
+| [0003](./0003-begrensde-query-grammatica.md) | Begrensde query-grammatica i.p.v. ElasticSearch-DSL | Voorgesteld | [`patterns/sync-feed`](../../patterns/sync-feed/next.yaml) (de cursor-paginering die deze ADR voorschrijft), [`patterns/query`](../../patterns/query/next.yaml) (schets) |
 | [0004](./0004-ingest-cloudevents-push.md) | Ingest: CloudEvents-push, idempotent & ondertekend | Voorgesteld | [`schemas/events`](../../schemas/events/v0.0.1.json) |
 | [0005](./0005-dunne-gateway-client-side-aggregatie.md) | Dunne token/CORS-gateway + client-side aggregatie | Voorgesteld | [`patterns/federated-auth`](../../patterns/federated-auth/next.yaml) |
 | [0006](./0006-per-domein-registers.md) | Per-domein registers & governance | Voorgesteld | [`apis/rest/discovery`](../../apis/rest/discovery/next.yaml) (verwijsindex) |
