@@ -1,0 +1,218 @@
+# Query Pattern (schets)
+# Bouwt voort op ADR-0003 (begrensde query-grammatica) en op de filters uit de
+# CloudEvents Subscriptions API. Schets: nog door geen enkele API gebruikt.
+# Zie ../../architecture/adr/README.md
+
+title: Query (schets)
+description: |
+  **Status: schets.** Nog door geen enkele API gebruikt. Bedoeld om over te
+  praten, niet om tegen te bouwen.
+
+  Eén endpoint om resources op te vragen, met dezelfde filtertaal als voor het
+  volgen van wijzigingen. Samen met `GET /events` (volgen) en
+  `POST /events/json.commit` (schrijven) is dit het eindbeeld: elke API leest,
+  volgt en schrijft op dezelfde manier.
+
+  **Vorm.** `POST /query`, met de filters in de body, zodat persoonsgegevens
+  niet in URL's belanden.
+
+  ```json
+  {
+    "type": "gesprek",
+    "filter": {
+      "all": [
+        { "exact": { "aanleidingZaak": "https://zaken.example.com/api/v1/zaken/def456" } },
+        { "gte": { "aanvangsmomentGesprek": "2026-01-01T00:00:00Z" } },
+        { "in": { "gespreksdeelname__partij": ["https://klantinteracties.example.com/api/v1/partijen/1"] } }
+      ]
+    },
+    "sorteer": "-aanvangsmomentGesprek",
+    "pageSize": 20
+  }
+  ```
+
+  Het antwoord:
+
+  ```json
+  { "results": [], "next": "c2VxOjEyMzQ1", "feedCursor": "18423" }
+  ```
+
+  `next` is de cursor voor de volgende pagina: dezelfde body met `cursor`
+  (cursor-paginering uit `patterns/pagination`, next). `feedCursor` is de positie
+  in de stroom, vastgesteld vóór het lezen. Een afnemer gaat daarmee verder op
+  `GET /events` als `Last-Event-ID` (`patterns/event-stream`).
+
+  **Filtertaal.** De filters uit de
+  [CloudEvents Subscriptions API](https://github.com/cloudevents/spec/blob/main/subscriptions/spec.md):
+  `exact`, `prefix`, `suffix`, `all`, `any` en `not`. Daarbij komen `in`, `gte`
+  en `lte` uit ADR-0003. Dezelfde taal is bruikbaar als filter op `GET /events`
+  en op abonnementen. Een afnemer schrijft zijn filter dus één keer, en gebruikt
+  het voor de snapshot en de stroom.
+
+  **Regels.**
+
+  - **Alleen aangewezen velden.** Elke API markeert per type welke velden
+    bevraagbaar zijn, met de extensie `x-queryable: true` op het veld in het
+    schema. Een ander veld geeft `400`.
+  - **Begrensd.** Ten hoogste 2 niveaus nesting, 10 elementen per groep en 50
+    waarden bij `in`.
+  - **Geen vrije tekst.** Hooguit een optionele `bevat`, en alleen op tekstvelden
+    die de API daarvoor aanwijst.
+  - **Autorisatie op de boom.** De server voegt autorisatie toe als extra filter
+    op de geparste boom, nooit door tekst aan elkaar te plakken. Een query
+    verruimt nooit wat de aanroeper mag zien.
+  - **Fouten.** `application/problem+json`, met in `invalidParams` het pad in de
+    boom, bijvoorbeeld `filter.all.1.gte`.
+
+  **Alternatief: verkorte vorm.** Veldnamen als sleutels, zoals in Mongo:
+
+  ```json
+  {
+    "van": "gesprekken",
+    "waar": {
+      "aanleidingZaak": "https://zaken.example.com/api/v1/zaken/def456",
+      "aanvangsmomentGesprek": { "gte": "2026-01-01T00:00:00Z" }
+    },
+    "sorteer": "-aanvangsmomentGesprek"
+  }
+  ```
+
+  Een waarde betekent gelijk aan; daarnaast `in`, `gte` en `lte`. Velden zijn
+  impliciet EN, met hooguit één niveau `of`.
+
+  | | CloudEvents-filters (voorstel) | Verkorte vorm |
+  |---|---|---|
+  | Leesbaarheid | Langer, operator staat voorop | Leest als de data |
+  | Validatie met OpenAPI | Lastiger: velden zitten onder een operator | Eenvoudig: toegestane velden als properties |
+  | Eén taal met `/events` en abonnementen | Ja | Nee, tenzij we ook daar afwijken |
+  | Bestaande standaard | Ja, met eigen uitbreidingen | Nee |
+
+  **Vergelijking.**
+
+  - **ZaakChat (`GET /query`):** Tantivy-syntax in de querystring, en autorisatie
+    door tekst aan de query te plakken. Het bewijst het idee, maar is geen
+    voorbeeld: een zoekmachine-taal kun je leveranciers niet opleggen, persoonsgegevens
+    belanden in de URL, en plakken van tekst is kwetsbaar.
+  - **`POST /gesprekken/zoek` (ADR-0003):** dezelfde begrenzing, maar per API
+    en met een eigen boom van `veld`, `operator` en `waarde`. Deze schets maakt
+    die grammatica generiek en deelt haar met de stroom.
+
+  **Waarom niet iets anders.**
+
+  - **GraphQL:** lastig te begrenzen in autorisatie en kosten, en het staat los
+    van de REST-API's.
+  - **OData:** groot, en gebaseerd op querystrings.
+  - **Elasticsearch-DSL:** afgewezen in ADR-0003.
+  - **JSON Logic:** generiek, maar slecht leesbaar en lastig te begrenzen.
+
+  **Open vragen.**
+
+  - Meerdere types in één query (`type` als lijst), op gedeelde velden.
+  - Projecties: alleen bepaalde velden opvragen (`velden`).
+  - Tellingen: wel of geen `count`, omdat tellen duur kan zijn.
+  - Hoe `x-queryable` zich verhoudt tot validatie met OpenAPI.
+  - Of `prefix` en `suffix` nodig zijn voor resources, of alleen voor events.
+
+schemas:
+  Query:
+    type: object
+    description: De body van `POST /query`.
+    required:
+      - type
+    properties:
+      type:
+        type: string
+        description: Het resourcetype. Een lijst is een open vraag.
+        example: gesprek
+      filter:
+        $ref: "#/schemas/Filter"
+      sorteer:
+        type: string
+        description: Veld om op te sorteren; `-` betekent aflopend.
+        example: "-aanvangsmomentGesprek"
+      pageSize:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      cursor:
+        type: string
+        description: De waarde van `next` uit het vorige antwoord. Opaak.
+
+  QueryAntwoord:
+    type: object
+    required:
+      - results
+      - next
+      - feedCursor
+    properties:
+      results:
+        type: array
+        items: {}
+      next:
+        type: string
+        nullable: true
+        description: Cursor voor de volgende pagina, of `null` op de laatste.
+      feedCursor:
+        type: string
+        description: Positie in de stroom, vastgesteld vóór het lezen. Gebruik als `Last-Event-ID` op `GET /events`.
+        example: "18423"
+
+  Filter:
+    type: object
+    description: |
+      Precies één van de operatoren. `exact`, `prefix`, `suffix` en `all`, `any`
+      en `not` komen uit de CloudEvents Subscriptions API; `in`, `gte`, `lte` en
+      `bevat` zijn uitbreidingen. Nesting is ten hoogste 2 niveaus; dat bewaakt
+      de server.
+    minProperties: 1
+    maxProperties: 1
+    additionalProperties: false
+    properties:
+      exact:
+        type: object
+        additionalProperties:
+          type: string
+      prefix:
+        type: object
+        additionalProperties:
+          type: string
+      suffix:
+        type: object
+        additionalProperties:
+          type: string
+      in:
+        type: object
+        additionalProperties:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: string
+      gte:
+        type: object
+        additionalProperties:
+          type: string
+      lte:
+        type: object
+        additionalProperties:
+          type: string
+      bevat:
+        type: object
+        description: Alleen op tekstvelden die de API daarvoor aanwijst.
+        additionalProperties:
+          type: string
+      all:
+        type: array
+        minItems: 1
+        maxItems: 10
+        items:
+          $ref: "#/schemas/Filter"
+      any:
+        type: array
+        minItems: 1
+        maxItems: 10
+        items:
+          $ref: "#/schemas/Filter"
+      not:
+        $ref: "#/schemas/Filter"
