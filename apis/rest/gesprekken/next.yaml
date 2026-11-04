@@ -276,28 +276,6 @@ paths:
           schema:
             type: string
             format: uri
-        - name: gespreksdeelname__rsin
-          in: query
-          description: >
-            Filter op gesprekken met een deelname met dit RSIN.
-          schema:
-            type: string
-            pattern: '^\d{9}$'
-        - name: gespreksdeelname__kvkNummer
-          in: query
-          description: >
-            Filter op gesprekken met een deelname met dit KVK-nummer.
-          schema:
-            type: string
-            pattern: '^\d{8}$'
-        - name: gespreksdeelname__vestigingsnummer
-          in: query
-          description: >
-            Filter op gesprekken met een deelname met dit
-            vestigingsnummer.
-          schema:
-            type: string
-            pattern: '^\d{12}$'
       responses:
         "200":
           description: OK
@@ -784,8 +762,8 @@ paths:
         | `nl.vng.gesprekken.gesprek.verwijderd` | vernietiging na afloop van de bewaartermijn | `Tombstone` |
         | `nl.vng.gesprekken.gesprek.geredigeerd` | inhoud van het gesprek uit de historie verwijderd (beheerhandeling) | `Redactie` |
         | `nl.vng.gesprekken.gespreksbijdrage.aangemaakt` | `eersteBijdrage` bij `POST /gesprekken`, `POST /gespreksbijdragen` | `Gespreksbijdrage` |
-        | `nl.vng.gesprekken.gespreksdeelname.aangemaakt` | `ontvanger` bij `POST /gesprekken`, `POST /gespreksdeelnames`, `nieuweDeelname` | `GespreksdeelnameEvent` |
-        | `nl.vng.gesprekken.gespreksdeelname.beeindigd` | `POST /gespreksdeelnames/{uuid}/eindigen` | `GespreksdeelnameEvent` |
+        | `nl.vng.gesprekken.gespreksdeelname.aangemaakt` | `ontvanger` bij `POST /gesprekken`, `POST /gespreksdeelnames`, `nieuweDeelname` | `Gespreksdeelname` |
+        | `nl.vng.gesprekken.gespreksdeelname.beeindigd` | `POST /gespreksdeelnames/{uuid}/eindigen` | `Gespreksdeelname` |
         | `nl.vng.gesprekken.gespreksbijdrage.gelezen` | `POST /gespreksbijdragen/{uuid}/gelezen` | `GelezenGespreksbijdrage` |
         | `nl.vng.gesprekken.gespreksbijdrage.geredigeerd` | `POST /gespreksbijdragen/{uuid}/redigeren` | `Redactie` |
 
@@ -797,10 +775,9 @@ paths:
         ziet. De stroom filtert niet per rol: het event bevat geen gevoelige
         gegevens, en wat getoond wordt, kiest de interface.
 
-        **Privacy.** Deelname-events bevatten geen `bsn`, `rsin`,
-        `kvkNummer`, `vestigingsnummer` of `emailadres`, omdat alle deelnemers
-        van het gesprek ze ontvangen. Gebruik daarvoor de REST-operaties, die
-        per aanroeper autoriseren.
+        **Privacy.** Een deelname bevat alleen `naam` en een verwijzing naar de
+        Partij of Actor. Andere gegevens over de persoon staan in
+        Klantinteracties.
       tags:
         - Events
       parameters:
@@ -1014,7 +991,7 @@ components:
               type: array
               readOnly: true
               items:
-                $ref: '#/components/schemas/GespreksdeelnameInGesprek'
+                $ref: '#/components/schemas/Gespreksdeelname'
               description: >
                 De deelnames aan dit gesprek, oudste eerst. Een client heeft ze
                 nodig om te zien welke bijdragen van de eigen deelname zijn en
@@ -1027,57 +1004,6 @@ components:
               description: >
                 De gespreksbijdragen binnen dit gesprek, chronologisch
                 geordend (oudste eerst).
-
-    GespreksdeelnameInGesprek:
-      type: object
-      description: >
-        Een gespreksdeelname zoals opgenomen in `GesprekDetail`. Iedere
-        deelnemer kan het gesprek lezen, dus zonder `emailadres`, `bsn`,
-        `rsin`, `kvkNummer` en `vestigingsnummer`.
-      required:
-        - uuid
-        - url
-        - type
-        - naam
-        - aanvangsmomentDeelname
-      properties:
-        uuid:
-          type: string
-          format: uuid
-          example: "550e8400-e29b-41d4-a716-446655440002"
-        url:
-          type: string
-          format: uri
-        type:
-          type: string
-          enum:
-            - actor
-            - partij
-          example: partij
-        partij:
-          type: string
-          format: uri
-          nullable: true
-          description: URL-referentie naar de Partij (Klantinteracties API), bij `type` partij.
-          example: "https://klantinteracties.example.com/api/v1/partijen/550e8400-e29b-41d4-a716-446655440000"
-        actor:
-          type: string
-          format: uri
-          nullable: true
-          description: URL-referentie naar de Actor (Klantinteracties API), bij `type` actor.
-          example: null
-        naam:
-          type: string
-          example: "Jan Jansen"
-        aanvangsmomentDeelname:
-          type: string
-          format: date-time
-          example: "2026-03-11T10:15:00Z"
-        momentEindeDeelname:
-          type: string
-          format: date-time
-          nullable: true
-          example: null
 
     GesprekList:
       description: >
@@ -1358,10 +1284,9 @@ components:
         deelname. Een MijnOmgeving of zaaksysteem dat een e-mailadres nodig
         heeft (bijvoorbeeld voor een melding van een nieuwe bijdrage), haalt
         dat uit de digitale adressen van de Partij (`/digitaleadressen` in de
-        Klantinteracties API). `emailadres`, `bsn`, `rsin`, `kvkNummer` en
-        `vestigingsnummer` zijn optioneel, voor registraties die (nog) geen
-        Klantinteracties gebruiken. Ze komen nooit in events en niet in
-        `GesprekDetail`.
+        Klantinteracties API).
+
+        Dit veronderstelt dat Klantinteracties beschikbaar is.
       required:
         - type
         - naam
@@ -1380,9 +1305,7 @@ components:
           description: >
             URL-referentie naar de Partij (Klantinteracties API) waarvoor een
             nieuwe Gespreksdeelname wordt aangemaakt. Verplicht wanneer `type`
-            gelijk is aan `partij`, tenzij de registratie geen Klantinteracties
-            gebruikt; dan identificeren de optionele velden hieronder de
-            deelnemer.
+            gelijk is aan `partij`.
           example: "https://klantinteracties.example.com/api/v1/partijen/550e8400-e29b-41d4-a716-446655440000"
         actor:
           type: string
@@ -1397,48 +1320,6 @@ components:
           type: string
           description: Weergavenaam van de deelnemer in het gesprek.
           example: "Jan Jansen"
-        emailadres:
-          type: string
-          format: email
-          nullable: true
-          description: >
-            Optioneel e-mailadres van de deelnemer, voor registraties zonder
-            Klantinteracties. Bij voorkeur komt het e-mailadres uit de
-            digitale adressen van de Partij.
-          example: "jan.jansen@example.com"
-        bsn:
-          type: string
-          pattern: '^\d{9}$'
-          nullable: true
-          description: >
-            Burgerservicenummer van de deelnemer, indien het een natuurlijk
-            persoon betreft.
-          example: "123456782"
-        rsin:
-          type: string
-          pattern: '^\d{9}$'
-          nullable: true
-          description: >
-            RSIN van de deelnemer, indien het een rechtspersoon of
-            samenwerkingsverband betreft.
-          example: "123456782"
-        kvkNummer:
-          type: string
-          pattern: '^\d{8}$'
-          nullable: true
-          description: >
-            KVK-nummer van de deelnemer, indien het een bij de Kamer van
-            Koophandel geregistreerde organisatie betreft.
-          example: "12345678"
-        vestigingsnummer:
-          type: string
-          pattern: '^\d{12}$'
-          nullable: true
-          description: >
-            Vestigingsnummer van de deelnemer, indien het een specifieke
-            vestiging van een organisatie betreft.
-          example: "123456789012"
-
     GespreksdeelnameCreate:
       description: >
         Registreert een deelname aan een reeds bestaand gesprek (zie
@@ -1617,7 +1498,7 @@ components:
               anyOf:
                 - $ref: '#/components/schemas/Gesprek'
                 - $ref: '#/components/schemas/Gespreksbijdrage'
-                - $ref: '#/components/schemas/GespreksdeelnameEvent'
+                - $ref: '#/components/schemas/Gespreksdeelname'
                 - $ref: '#/components/schemas/GelezenGespreksbijdrage'
                 - $ref: '../../../patterns/event-stream/next.yaml#/schemas/Tombstone'
                 - $ref: '../../../patterns/event-stream/next.yaml#/schemas/Redactie'
@@ -1640,72 +1521,6 @@ components:
           gesprek: "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
           isReactieOp: null
           bijlagen: []
-
-    GespreksdeelnameEvent:
-      type: object
-      description: >
-        Gespreksdeelname zoals die in events wordt geleverd. Bevat bewust geen
-        `bsn`, `rsin`, `kvkNummer`, `vestigingsnummer` of `emailadres`, omdat
-        alle deelnemers van het gesprek dit event ontvangen.
-      required:
-        - uuid
-        - url
-        - gesprek
-        - type
-        - naam
-        - aanvangsmomentDeelname
-      properties:
-        uuid:
-          type: string
-          format: uuid
-          description: Unieke systeemidentifier van de gespreksdeelname.
-          example: "550e8400-e29b-41d4-a716-446655440002"
-        url:
-          type: string
-          format: uri
-          description: URL van de gespreksdeelname.
-        gesprek:
-          type: string
-          format: uri
-          description: URL van het gesprek waaraan wordt deelgenomen.
-          example: "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
-        type:
-          type: string
-          enum:
-            - actor
-            - partij
-          description: Of de deelname een Partij of een Actor betreft.
-          example: partij
-        partij:
-          type: string
-          format: uri
-          nullable: true
-          description: >
-            URL-referentie naar de Partij (Klantinteracties API), bij `type`
-            partij. Een verwijzing, geen persoonsgegeven: een afnemer herkent er
-            de eigen deelname aan.
-          example: "https://klantinteracties.example.com/api/v1/partijen/550e8400-e29b-41d4-a716-446655440000"
-        actor:
-          type: string
-          format: uri
-          nullable: true
-          description: URL-referentie naar de Actor (Klantinteracties API), bij `type` actor.
-          example: null
-        naam:
-          type: string
-          description: Naam van de deelnemer, zoals getoond in het gesprek.
-          example: "Jan Jansen"
-        aanvangsmomentDeelname:
-          type: string
-          format: date-time
-          description: Het moment dat deze deelname is gestart.
-          example: "2026-03-11T10:15:00Z"
-        momentEindeDeelname:
-          type: string
-          format: date-time
-          nullable: true
-          description: Het moment dat de deelname is beëindigd.
-          example: null
 
     # ───── BIJLAGE ─────────────────────────────────────────────────────────
 
