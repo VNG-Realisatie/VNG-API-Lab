@@ -12,7 +12,7 @@ info:
     Dit gepruned document omvat alleen:
     - `GET /gesprekken` — lijst van gesprekken ophalen
     - `GET /gesprekken/{uuid}` — één gesprek ophalen, met gespreksbijdragen
-    - `POST /gesprekken` — gesprek (+ ontvanger(s) + optioneel eerste bijdrage) aanmaken
+    - `POST /gesprekken` — gesprek (+ ontvanger(s) + eerste bijdrage) aanmaken
     - `POST /gesprekken/{uuid}/eindigen` — gesprek beëindigen
     - `POST /gespreksbijdragen` — vervolgbijdrage aan een gesprek toevoegen
     - `POST /gespreksdeelnames` — deelname aan een bestaand gesprek toevoegen
@@ -69,19 +69,16 @@ info:
     de start ontstaat daarom geen klantcontact. Bij het afsluiten, via
     `POST /gesprekken/{uuid}/eindigen` of automatisch na de termijn, maakt de
     registratie één klantcontact aan in Klantinteracties en vult `contactmoment`
-    op het gesprek, mits het gesprek minstens één gespreksbijdrage heeft;
-    zonder bijdrage is er geen communicatie geweest en blijft het veld `null`.
-    Het event `nl.vng.gesprekken.gesprek.beeindigd` bevat die
+    op het gesprek. Het event `nl.vng.gesprekken.gesprek.beeindigd` bevat die
     URL. Een lopend gesprek is voor het KCC te vinden met de filters op partij
     en zaak.
 
     Automatisch sluiten is hiermee nodig: zonder afsluiten ontstaat er geen
     contactmoment. De registratie sluit een gesprek na 3 dagen zonder nieuwe
-    gespreksbijdrage, gerekend vanaf de laatste bijdrage (zonder bijdrage vanaf
-    `aanvangsmomentGesprek`). Dit is de standaardwaarde; een registratie of
+    gespreksbijdrage, gerekend vanaf de laatste bijdrage. Dit is de standaardwaarde; een registratie of
     gemeente mag een andere termijn instellen. Automatisch sluiten werkt als
-    eindigen: `momentEindeGesprek` wordt gezet, `gesprek.beeindigd` volgt, en
-    bij minstens één bijdrage ontstaat het klantcontact.
+    eindigen: `momentEindeGesprek` wordt gezet, `gesprek.beeindigd` volgt en
+    het klantcontact ontstaat.
 
     ## Realtime: snapshot + events
 
@@ -302,16 +299,12 @@ paths:
       summary: Gesprek aanmaken
       description: |
         Maakt een nieuw gesprek aan, samen met de ontvanger(s) (`ontvanger`)
-        en optioneel de eerste gespreksbijdrage (`eersteBijdrage`). Een gesprek
-        heeft volgens het informatiemodel altijd minimaal één gespreksdeelnemer;
-        gesprek en ontvanger(s) worden daarom atomair aangemaakt.
-        `eersteBijdrage.verzender` is expliciet, op dezelfde manier als
-        `verzender` bij `POST /gespreksbijdragen`.
-
-        **Afwijking van het informatiemodel.** Volgens het informatiemodel bevat
-        een gesprek minimaal één gespreksbijdrage ([1..*]). Technisch is die hier
-        niet verplicht; functioneel wel: zonder bijdrage is er geen communicatie
-        geweest, en ontstaat er bij het afsluiten geen klantcontact.
+        en de eerste gespreksbijdrage (`eersteBijdrage`). Een gesprek heeft
+        volgens het informatiemodel altijd minimaal één gespreksdeelnemer en
+        bevat altijd minimaal één gespreksbijdrage; gesprek, ontvanger(s) en
+        eerste bijdrage worden daarom atomair aangemaakt. `eersteBijdrage.verzender`
+        is expliciet, op dezelfde manier als `verzender` bij
+        `POST /gespreksbijdragen`.
 
         Voor elk item in `ontvanger` wordt in dezelfde aanvraag een
         gespreksdeelname aangemaakt op basis van een Partij of een Actor,
@@ -409,9 +402,8 @@ paths:
         resultaat.
 
         Bij het afsluiten, ook bij automatisch sluiten, maakt de registratie
-        het klantcontact aan in Klantinteracties en vult `contactmoment`, als
-        het gesprek minstens één bijdrage heeft (zie "Contactmoment" in de
-        API-beschrijving).
+        het klantcontact aan in Klantinteracties en vult `contactmoment`
+        (zie "Contactmoment" in de API-beschrijving).
       tags:
         - Gesprekken
       parameters:
@@ -892,6 +884,7 @@ components:
         - type: object
           required:
             - ontvanger
+            - eersteBijdrage
           properties:
             ontvanger:
               type: array
@@ -962,10 +955,9 @@ components:
               description: >
                 URL-referentie naar het klantcontact (Klantinteracties API)
                 waartoe dit gesprek heeft geleid. `null` zolang het gesprek
-                loopt, en ook na afloop als er geen gespreksbijdrage is. De
-                registratie maakt het klantcontact aan en vult dit veld wanneer
-                het gesprek wordt afgesloten; zie "Contactmoment" in de
-                API-beschrijving. Niet op te geven of te wijzigen.
+                loopt. De registratie maakt het klantcontact aan en vult dit
+                veld wanneer het gesprek wordt afgesloten; zie "Contactmoment"
+                in de API-beschrijving. Niet op te geven of te wijzigen.
               example: "https://klantinteracties.example.com/api/v1/klantcontacten/7c1e2d3f-5b8e-4d21-9a6f-0c1e2d3f4a5b"
         - $ref: '#/components/schemas/GesprekBase'
       required:
@@ -1039,7 +1031,7 @@ components:
       readOnly: true
       description: >
         Weergavegegevens van de laatst geleverde gespreksbijdrage, of `null`
-        als het gesprek nog geen bijdrage heeft. Alleen in lijsten, die per
+        als die is geredigeerd en er geen andere is. Alleen in lijsten, die per
         aanroeper autoriseren; niet in events, omdat `tekstFragment` vrije
         tekst is.
       required:
@@ -1164,9 +1156,10 @@ components:
     EersteGespreksbijdrageCreate:
       type: object
       description: >
-        De eerste gespreksbijdrage waarmee een gesprek wordt geopend, in dezelfde
-        aanvraag als het gesprek (zie `POST /gesprekken`). Optioneel; zie de
-        afwijking van het informatiemodel daar. Zelfde vorm als `GespreksbijdrageCreate`
+        De eerste gespreksbijdrage waarmee een gesprek wordt geopend. Een gesprek
+        bevat volgens het informatiemodel altijd minimaal één gespreksbijdrage,
+        dus deze eerste bijdrage wordt samen met het gesprek in dezelfde aanvraag
+        aangemaakt (zie `POST /gesprekken`). Zelfde vorm als `GespreksbijdrageCreate`
         (zie `POST /gespreksbijdragen`), met twee uitzonderingen: `gesprek` is hier
         niet van toepassing (het gesprek bestaat nog niet) en `isReactieOp` is hier
         niet van toepassing (er is nog geen eerdere gespreksbijdrage om op te
