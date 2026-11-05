@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Fout": {
+      "type": "object",
+      "description": "Problem Details-object voor HTTP 4xx- en 5xx-fouten conform RFC 9457 (voorheen RFC 7807). De standaardleden zijn optioneel volgens de RFC; aanvullende leden, zoals code, kunnen worden gebruikt voor API-specifieke machineleesbare informatie.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "format": "uri-reference",
+          "description": "URI-referentie die het type fout identificeert. Als dit veld ontbreekt, geldt volgens RFC 9457 (voorheen RFC 7807) impliciet about:blank.",
+          "title": "type"
+        },
+        "code": {
+          "type": "string",
+          "description": "API-specifieke, machineleesbare foutcode voor consumers.",
+          "title": "code"
+        },
+        "title": {
+          "type": "string",
+          "description": "Korte, voor mensen leesbare samenvatting van het fouttype. Deze hoort stabiel te blijven per fouttype, behalve bij lokalisatie.",
+          "title": "title"
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599,
+          "description": "HTTP-statuscode voor deze fout. Als dit veld aanwezig is, moet deze overeenkomen met de statuscode van de HTTP-response.",
+          "title": "status"
+        },
+        "detail": {
+          "type": "string",
+          "description": "Voor mensen leesbare uitleg specifiek voor dit foutgeval. Consumers horen dit veld niet te parsen voor machineleesbare informatie.",
+          "title": "detail"
+        },
+        "instance": {
+          "type": "string",
+          "format": "uri-reference",
+          "description": "URI-referentie die dit specifieke foutgeval identificeert. De URI kan relatief zijn en hoeft niet dereferenceable te zijn.",
+          "title": "instance"
+        },
+        "invalidParams": {
+          "type": "array",
+          "description": "Optioneel: de ongeldige velden of parameters, één item per probleem. Gebruikelijk bij 400 na validatie van de invoer; ZGW-implementaties sturen dit al.",
+          "title": "invalidParams",
+          "items": {
+            "$ref": "#/$defs/InvalidParam"
+          }
+        }
+      }
+    },
+    "InvalidParam": {
+      "type": "object",
+      "description": "Eén ongeldig veld of één ongeldige parameter in een aanvraag.",
+      "required": [
+        "name",
+        "code",
+        "reason"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Naam van het veld of de parameter. Bij geneste velden met punten, bijvoorbeeld eersteBijdrage.tekstGespreksBijdrage.",
+          "title": "name"
+        },
+        "code": {
+          "type": "string",
+          "description": "Machineleesbare foutcode voor dit veld, bijvoorbeeld required of max_length.",
+          "title": "code"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Voor mensen leesbare uitleg waarom de waarde ongeldig is.",
+          "title": "reason"
+        }
+      }
+    }
+  }
+}
