@@ -71,7 +71,9 @@ info:
     registratie één klantcontact aan in Klantinteracties en vult `contactmoment`
     op het gesprek. Het event `nl.vng.gesprekken.gesprek.beeindigd` bevat die
     URL. Een lopend gesprek is voor het KCC te vinden met de filters op partij
-    en zaak.
+    en zaak. Het klantcontact bevat geen berichttekst, maar verwijst met een
+    onderwerpobject naar het gesprek en de aanleiding, en met betrokkenen naar
+    de deelnemers die in Klantinteracties staan.
 
     Automatisch sluiten is hiermee nodig: zonder afsluiten ontstaat er geen
     contactmoment. De registratie sluit een gesprek na 3 dagen zonder nieuwe
