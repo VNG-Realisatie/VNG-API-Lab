@@ -53,13 +53,13 @@ info:
     ## Aanleidingen
 
     Het informatiemodel kent vier mogelijke aanleidingen, elk [0..1]: een
-    ZAAK, een THEMA, een PRODUCT/DIENST en een AGENDA-AFSPRAAK. De API
-    heeft voor elk een optioneel veld (`aanleidingZaak`,
-    `aanleidingThema`, `aanleidingProductDienst`,
-    `aanleidingAgendaAfspraak`). Geen enkele aanleiding is verplicht. In de
-    MVP wordt in de praktijk de zaak gebruikt; filters, routering
-    (`aanleidingzaak` in events) en kenmerken gaan daarom nu alleen over de
-    zaak.
+    ZAAK, een THEMA, een PRODUCT/DIENST en een AGENDA-AFSPRAAK. Daar komt
+    een PLAN bij. De API heeft voor elk een optioneel veld
+    (`aanleidingZaak`, `aanleidingThema`, `aanleidingProductDienst`,
+    `aanleidingAgendaAfspraak`, `aanleidingPlan`). Geen enkele aanleiding is
+    verplicht. De eerste context is de zaak; product en plan volgen, andere
+    objecttypen later. Of een bericht ook een aanleiding kan zijn, is nog
+    open. Routering (`aanleidingzaak` in events) gaat nu alleen over de zaak.
 
     ## Contactmoment
 
@@ -79,6 +79,14 @@ info:
     gemeente mag een andere termijn instellen. Automatisch sluiten werkt als
     eindigen: `momentEindeGesprek` wordt gezet, `gesprek.beeindigd` volgt en
     het klantcontact ontstaat.
+
+    ## Automatisch antwoord
+
+    Een registratie mag op elke bijdrage van een inwoner automatisch
+    antwoorden, bijvoorbeeld "We reageren binnen 2 werkdagen." Zo'n antwoord
+    is een gewone gespreksbijdrage van een systeem-Actor met `automatisch`
+    op `true`, zodat een afnemer het herkenbaar kan tonen. Een automatisch
+    antwoord leidt niet tot een melding aan de inwoner.
 
     ## Realtime: snapshot + events
 
@@ -126,9 +134,11 @@ info:
     verwijderd: verstuurd is verstuurd. Er is daarom geen `PATCH` of
     `DELETE`.
 
-    - **Verwijderen** doet de registratie zelf, na afloop van de
-      bewaartermijn. Daar is geen API-operatie voor; afnemers zien het als
-      `nl.vng.gesprekken.gesprek.verwijderd` op `/events`.
+    - **Verwijderen** doet de registratie zelf. Een gesprek heeft geen eigen
+      bewaartermijn: het volgt de bewaartermijn en archiefactiedatum van zijn
+      aanleiding (zaak, product of plan). Daar is geen API-operatie voor;
+      afnemers zien het als `nl.vng.gesprekken.gesprek.verwijderd` op
+      `/events`.
     - **Redigeren** is een beheeroperatie voor een bijdrage die er niet in
       had mogen staan (bijvoorbeeld een BSN in de tekst):
       `POST /gespreksbijdragen/{uuid}/redigeren` met scope
@@ -196,6 +206,12 @@ paths:
             Filter op gesprekken met deze ZAAK (Zaken API) als aanleiding.
             Nodig om de gesprekken van een zaak te tonen, bijvoorbeeld op de
             zaakpagina van de MijnOmgeving.
+          schema:
+            type: string
+            format: uri
+        - name: aanleidingPlan
+          in: query
+          description: Filter op gesprekken met dit PLAN als aanleiding.
           schema:
             type: string
             format: uri
@@ -295,7 +311,9 @@ paths:
         "Het gesprek wordt gestart door de gemeente, of de klant van de
         gemeente"). Start de klant, dan is `eersteBijdrage.verzender` een
         deelname van `type` `partij` en is de gemeente (een Actor) de
-        ontvanger. Dat hoort bij de MVP.
+        ontvanger. De API staat dit toe. Of de inwoner in de MVP mag starten,
+        is nog open: Roxit heeft er de voorkeur voor dat alleen de medewerker
+        start.
       tags:
         - Gesprekken
       requestBody:
@@ -853,6 +871,14 @@ components:
             URL-referentie naar de AGENDA-AFSPRAAK (Agenda API) die aanleiding
             is voor dit gesprek.
           example: null
+        aanleidingPlan:
+          type: string
+          format: uri
+          nullable: true
+          description: >
+            URL-referentie naar het PLAN (Plannen API) dat aanleiding is voor
+            dit gesprek.
+          example: null
 
     GesprekCreate:
       allOf:
@@ -1179,6 +1205,13 @@ components:
               format: uri
               readOnly: true
               description: URL van deze resource.
+            automatisch:
+              type: boolean
+              readOnly: true
+              default: false
+              description: >
+                `true` als dit een automatisch antwoord van een systeem-Actor
+                is (zie "Automatisch antwoord" in de API-beschrijving).
             leveringsmoment:
               type: string
               format: date-time
@@ -1289,6 +1322,16 @@ components:
           type: string
           description: Weergavenaam van de deelnemer in het gesprek.
           example: "Jan Jansen"
+        namens:
+          type: string
+          format: uri
+          nullable: true
+          description: >
+            URL-referentie naar de Partij (Klantinteracties API) namens wie deze
+            deelnemer optreedt, bijvoorbeeld als curator of bewindvoerder.
+            Alleen voor weergave: wie mag lezen en schrijven is een
+            autorisatieregel.
+          example: null
     GespreksdeelnameCreate:
       description: >
         Registreert een deelname aan een reeds bestaand gesprek (zie
