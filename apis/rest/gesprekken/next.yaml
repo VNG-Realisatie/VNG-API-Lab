@@ -10,18 +10,18 @@ info:
     **Gespreksbijdragen** (wat een deelnemer toevoegt aan het gesprek).
 
     Dit gepruned document omvat alleen:
-    - `GET /gesprekken` — lijst van gesprekken ophalen
-    - `GET /gesprekken/{uuid}` — één gesprek ophalen, met gespreksbijdragen
-    - `POST /gesprekken` — gesprek (+ ontvanger(s) + eerste bijdrage) aanmaken
-    - `POST /gesprekken/{uuid}/eindigen` — gesprek beëindigen
-    - `POST /gespreksbijdragen` — vervolgbijdrage aan een gesprek toevoegen
-    - `POST /gespreksdeelnames` — deelname aan een bestaand gesprek toevoegen
-    - `POST /gespreksdeelnames/{uuid}/eindigen` — deelname beëindigen
-    - `POST /gespreksbijdragen/{uuid}/gelezen` — gespreksbijdrage als gelezen markeren
-    - `POST /gespreksbijdragen/{uuid}/redigeren` — gespreksbijdrage redigeren (beheer)
-    - `POST /bestanden/upload-sessie` — upload van een bijlage starten
-    - `GET /bestanden/{fileId}` — bestand en downloadlink ophalen
-    - `GET /events` — realtime wijzigingen volgen (Server-Sent Events)
+    - `GET /gesprekken`: lijst van gesprekken ophalen
+    - `GET /gesprekken/{uuid}`: één gesprek ophalen, met gespreksbijdragen
+    - `POST /gesprekken`: gesprek (+ ontvanger(s) + eerste bijdrage) aanmaken
+    - `POST /gesprekken/{uuid}/eindigen`: gesprek beëindigen
+    - `POST /gespreksbijdragen`: vervolgbijdrage aan een gesprek toevoegen
+    - `POST /gespreksdeelnames`: deelname aan een bestaand gesprek toevoegen
+    - `POST /gespreksdeelnames/{uuid}/eindigen`: deelname beëindigen
+    - `POST /gespreksbijdragen/{uuid}/gelezen`: gespreksbijdrage als gelezen markeren
+    - `POST /gespreksbijdragen/{uuid}/redigeren`: gespreksbijdrage redigeren (beheer)
+    - `POST /bestanden/upload-sessie`: upload van een bijlage starten
+    - `GET /bestanden/{fileId}`: bestand en downloadlink ophalen
+    - `GET /events`: realtime wijzigingen volgen (Server-Sent Events)
 
     Alle overige operaties uit de volledige MijnGesprekken-standaard 0.2.1
     (Gespreksdeelnemers, en de overige CRUD-operaties op
@@ -76,9 +76,13 @@ info:
     de deelnemers die in Klantinteracties staan.
 
     Automatisch sluiten is hiermee nodig: zonder afsluiten ontstaat er geen
-    contactmoment. De registratie sluit een gesprek na 3 dagen zonder nieuwe
-    gespreksbijdrage, gerekend vanaf de laatste bijdrage. Dit is de standaardwaarde; een registratie of
-    gemeente mag een andere termijn instellen. Automatisch sluiten werkt als
+    contactmoment. De registratie sluit een gesprek dat op de inwoner wacht:
+    3 dagen na de laatste gespreksbijdrage van de gemeente (een actor, geen
+    automatisch antwoord). Is de laatste bijdrage die niet automatisch is van
+    de inwoner, dan wacht het gesprek op de gemeente en sluit het nooit
+    automatisch. Zo sluit een vraag die vrijdag binnenkomt niet op maandag,
+    voordat de gemeente heeft geantwoord. Dit is de standaardwaarde; een
+    registratie of gemeente mag een andere termijn instellen. Automatisch sluiten werkt als
     eindigen: `momentEindeGesprek` wordt gezet, `gesprek.beeindigd` volgt en
     het klantcontact ontstaat.
 
@@ -302,7 +306,7 @@ paths:
 
         Voor elk item in `ontvanger` wordt in dezelfde aanvraag een
         gespreksdeelname aangemaakt op basis van een Partij of een Actor,
-        aangegeven met `type` (`partij` of `actor`) — zie `DeelnameCreate`.
+        aangegeven met `type` (`partij` of `actor`), zie `DeelnameCreate`.
         Een gespreksdeelname bestaat alleen in de context van dit ene
         gesprek; de Partij/Actor zelf kan wel aan meerdere gesprekken
         deelnemen.
@@ -388,13 +392,13 @@ paths:
       summary: Gesprek beëindigen
       description: >
         Beëindigt het gesprek: zet `momentEindeGesprek` op het huidige moment.
-        Er is geen requestbody nodig — het systeem stelt het moment vast, net
+        Er is geen requestbody nodig: het systeem stelt het moment vast, net
         zoals `aanvangsmomentGesprek` bij het aanmaken van het gesprek.
 
         Iedere actieve deelnemer met scope `gesprekken.bijwerken` mag het
         gesprek beëindigen, dus ook de inwoner ("vraag beantwoord").
-        Automatisch sluiten na de termijn (standaard 3 dagen zonder nieuwe
-        bijdrage) doet de registratie zelf, buiten de API, met hetzelfde
+        Automatisch sluiten na de termijn (standaard 3 dagen na de laatste
+        bijdrage van de gemeente, zie "Contactmoment") doet de registratie zelf, buiten de API, met hetzelfde
         resultaat.
 
         Bij het afsluiten, ook bij automatisch sluiten, maakt de registratie
@@ -471,7 +475,7 @@ paths:
       summary: Gespreksbijdrage als gelezen markeren
       description: >
         Registreert dat een gespreksdeelname deze gespreksbijdrage heeft
-        gelezen — komt overeen met de GELEZEN GESPREKSBIJDRAGE-relatieklasse
+        gelezen. Dit komt overeen met de GELEZEN GESPREKSBIJDRAGE-relatieklasse
         uit het informatiemodel (`MomentGelezen`).
       tags:
         - Gespreksbijdragen
@@ -575,7 +579,7 @@ paths:
       operationId: gespreksdeelnames_create
       summary: Deelname aan een gesprek toevoegen
       description: >
-        Voegt een nieuwe deelname toe aan een reeds bestaand gesprek — voor
+        Voegt een nieuwe deelname toe aan een reeds bestaand gesprek, voor
         een Partij of Actor die zich later bij een lopend gesprek voegt. In
         tegenstelling tot `ontvanger` bij `POST /gesprekken` (de deelnames
         waarmee het gesprek wordt geopend) is dit voor deelnames die pas
@@ -614,7 +618,7 @@ paths:
       summary: Deelname beëindigen
       description: >
         Beëindigt een gespreksdeelname: zet `momentEindeDeelname` op het
-        huidige moment. Er is geen requestbody nodig — het systeem stelt het
+        huidige moment. Er is geen requestbody nodig: het systeem stelt het
         moment vast, net zoals bij `POST /gesprekken/{uuid}/eindigen`.
       tags:
         - Gespreksdeelnames
@@ -1119,7 +1123,7 @@ components:
         - `gespreksdeelname`: URL-referentie naar een reeds bestaande
           Gespreksdeelname binnen hetzelfde gesprek.
         - `nieuweDeelname`: maak in dezelfde aanvraag een nieuwe
-          Gespreksdeelname aan — zelfde vorm als een item in `ontvanger` bij
+          Gespreksdeelname aan, in dezelfde vorm als een item in `ontvanger` bij
           `POST /gesprekken` (zie `DeelnameCreate`).
       oneOf:
         - required:
@@ -1259,8 +1263,8 @@ components:
           example: "Bijdrage bevatte een BSN van een derde."
 
     # ───── GESPREKSDEELNAME ─────────────────────────────────────────────────
-    # Een gespreksdeelname bestaat uitsluitend in de context van één gesprek
-    # — de deelname ís de deelnemer, er is geen apart, over gesprekken heen
+    # Een gespreksdeelname bestaat uitsluitend in de context van één gesprek:
+    # de deelname ís de deelnemer, er is geen apart, over gesprekken heen
     # herbruikbaar Gespreksdeelnemer-object. Wat wél over meerdere gesprekken
     # heen herbruikbaar is, is de onderliggende Partij/Actor-referentie
     # (`partij`/`actor`): dezelfde Partij of Actor kan aan meerdere gesprekken
