@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Events",
+  "description": "Gedeelde eventschema's: de CloudEvents-envelop (ingest volgens ADR-0004, levering via patterns/event-stream volgens ADR-0002) en JSONCommit.",
+  "type": "object",
+  "$defs": {
+    "CloudEvent": {
+      "description": "CloudEvent 1.0 in JSON-formaat. Gebruikt als envelop bij ingest (ADR-0004) en als data van een SSE-bericht in patterns/event-stream (ADR-0002).",
+      "properties": {
+        "data": {
+          "description": "De inhoud van de gebeurtenis: meestal de resource na de wijziging. Welk schema van toepassing is, volgt uit type (en eventueel dataschema). Bij type json.commit is dit een JSONCommit."
+        },
+        "datacontenttype": {
+          "description": "Formaat van de data (meestal \"application/json\")",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dataref": {
+          "description": "Verwijzing naar externe data locatie (indien data niet inline staat)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dataschema": {
+          "description": "URL naar het schema dat de data beschrijft",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Unieke identificatie van deze gebeurtenis binnen source. Ontvangers ontdubbelen hierop; bij ingest is dit de idempotency-sleutel.",
+          "type": "string"
+        },
+        "sequence": {
+          "description": "Positie van de gebeurtenis in de stroom of feed van de bron, oplopend. In patterns/event-stream gelijk aan het SSE-id en bruikbaar als Last-Event-ID.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sequencetype": {
+          "description": "Type van de volgnummering die gebruikt wordt",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "description": "URI-referentie van de bron die de gebeurtenis heeft uitgegeven, bijvoorbeeld de basis-URL van de API-instantie. Bij ingest: wie dit beweert (provenance).",
+          "type": "string"
+        },
+        "specversion": {
+          "description": "Versie van de CloudEvents-specificatie (altijd \"1.0\").",
+          "type": "string"
+        },
+        "subject": {
+          "description": "Het onderwerp van de gebeurtenis binnen source: bij voorkeur de URL van de onderwerp-resource waarop autorisatie en filters werken (bijvoorbeeld een zaak of gesprek).",
+          "type": "string"
+        },
+        "time": {
+          "description": "Tijdstip waarop de gebeurtenis plaatsvond (RFC 3339).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "type": {
+          "description": "Soort gebeurtenis, in de vorm nl.vng.<api>.<resource>.<actie> (bijvoorbeeld nl.vng.gesprekken.gesprek.aangemaakt). Voor JSONCommits: json.commit.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "specversion",
+        "subject",
+        "type"
+      ],
+      "title": "CloudEvent",
+      "type": "object",
+      "examples": [
+        {
+          "specversion": "1.0",
+          "type": "nl.vng.gesprekken.gesprek.beeindigd",
+          "source": "https://gesprekken.example.com/api/v1",
+          "subject": "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f",
+          "id": "0b7e1c52-6f0e-4d8a-9c1b-2f3e4d5a6b7c",
+          "time": "2026-03-11T10:45:00Z",
+          "sequence": "18431",
+          "datacontenttype": "application/json",
+          "data": {
+            "uuid": "095be615-a8ad-4c33-8e9c-c7612fbf6c9f",
+            "url": "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f",
+            "referentie": "2026-GEM-00123",
+            "aanvangsmomentGesprek": "2026-03-11T10:00:00Z",
+            "momentEindeGesprek": "2026-03-11T10:45:00Z",
+            "gespreksonderwerp": "Aanvraag bijstandsuitkering",
+            "aanleidingZaak": "https://zaken.example.com/api/v1/zaken/def456"
+          }
+        },
+        {
+          "specversion": "1.0",
+          "type": "json.commit",
+          "source": "zaakchat-service",
+          "subject": "1",
+          "id": "01HF7K8QZ9X1Y2Z3A4B5C6D7E8",
+          "time": "2025-01-15T10:30:00Z",
+          "datacontenttype": "application/json",
+          "data": {
+            "resource_id": "1",
+            "schema": "Issue",
+            "actor": "user@gemeente.nl",
+            "timestamp": "2025-01-15T10:30:00Z",
+            "resource_data": {
+              "id": "1",
+              "title": "Paspoort aanvragen",
+              "description": "Nieuwe paspoort aanvraag ingediend door burger",
+              "status": "open",
+              "assignee": "alice@gemeente.nl"
+            }
+          }
+        },
+        {
+          "specversion": "1.0",
+          "type": "json.commit",
+          "source": "zaakchat-service",
+          "subject": "1",
+          "id": "01HF7K8QZ9X1Y2Z3A4B5C6D7E9",
+          "time": "2025-01-15T10:35:00Z",
+          "datacontenttype": "application/json",
+          "data": {
+            "resource_id": "comment-123",
+            "schema": "Comment",
+            "actor": "burger@eindhoven.nl",
+            "timestamp": "2025-01-15T10:35:00Z",
+            "resource_data": {
+              "content": "Wanneer kan ik mijn paspoort ophalen?"
+            }
+          }
+        }
+      ]
+    },
+    "JSONCommit": {
+      "description": "JSONCommit - Een commit van wijzigingen aan een JSON resource\n\nDit event type vertegenwoordigt elke wijziging aan een JSON resource, of het nu gaat om: - Het aanmaken van een nieuwe resource (resource_data bevat de volledige resource) - Het updaten van een bestaande resource (patch bevat de wijzigingen) - Het verwijderen van een resource (deleted: true markeert de resource als verwijderd)",
+      "properties": {
+        "actor": {
+          "description": "Email van de persoon die de actie heeft uitgevoerd (bijv. \"alice@gemeente.nl\", \"user@gemeente.nl\")",
+          "type": "string"
+        },
+        "deleted": {
+          "description": "Markeert de resource als verwijderd (bij verwijderingen). De resource (en de gerelateerde events) moeten dan uit de store verwijderd worden.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "patch": {
+          "description": "JSON Merge Patch (RFC 7396) met wijzigingen (bij updates). Velden met een null waarde worden verwijderd. Alle andere velden worden bijgewerkt / overgeschreven."
+        },
+        "resource_data": {
+          "description": "Complete resource data (bij aanmaken van nieuwe resources)"
+        },
+        "resource_id": {
+          "description": "Unieke identificatie van de resource waar deze commit over gaat.",
+          "type": "string"
+        },
+        "schema": {
+          "description": "URL naar het JSON Schema dat de structuur van de resource beschrijft (bijv. \"http://localhost:8000/schemas/Comment\") Dit bepaalt welke velden de resource moet hebben en wat hun dataype is.",
+          "type": "string"
+        },
+        "timestamp": {
+          "description": "Tijdstip waarop de commit plaatsvond (ISO 8601 formaat: 2024-01-15T10:30:00Z)",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "actor",
+        "resource_id",
+        "schema"
+      ],
+      "title": "JSONCommit",
+      "type": "object"
+    }
+  }
+}

@@ -22,7 +22,7 @@ het herbruikbare bouwblok dat eruit volgt.
 | ADR | Beslissing | Status | Bouwblok |
 | --- | --- | --- | --- |
 | [0001](./0001-federatief-geen-centrale-kluis.md) | Federatief — geen centrale kluis | Voorgesteld | — (richtinggevend; werkt door in 0005 en 0007) |
-| [0002](./0002-levering-snapshot-plus-sse.md) | Levering: snapshot + resumable SSE | Voorgesteld | [`patterns/sync-feed`](../../patterns/sync-feed/next.yaml) (snapshot- en cursorbouwstenen) |
+| [0002](./0002-levering-snapshot-plus-sse.md) | Levering: snapshot + resumable SSE | Voorgesteld | [`patterns/event-stream`](../../patterns/event-stream/next.yaml) (SSE-stroom), [`patterns/sync-feed`](../../patterns/sync-feed/next.yaml) (snapshot- en cursorbouwstenen) |
 | [0003](./0003-begrensde-query-grammatica.md) | Begrensde query-grammatica i.p.v. ElasticSearch-DSL | Voorgesteld | [`patterns/sync-feed`](../../patterns/sync-feed/next.yaml) (de cursor-paginering die deze ADR voorschrijft) |
 | [0004](./0004-ingest-cloudevents-push.md) | Ingest: CloudEvents-push, idempotent & ondertekend | Voorgesteld | [`schemas/events`](../../schemas/events/v0.0.1.json) |
 | [0005](./0005-dunne-gateway-client-side-aggregatie.md) | Dunne token/CORS-gateway + client-side aggregatie | Voorgesteld | [`patterns/federated-auth`](../../patterns/federated-auth/next.yaml) |
@@ -37,6 +37,7 @@ zijn overgenomen uit bestaande conventies:
 | [`patterns/pagination`](../../patterns/pagination/0.0.1.yaml) | ZGW-conventie (`page`/`pageSize`/`count`) | ADR-0003 schrijft cursor-paginering voor; voor endpoints waar een afnemer een kopie bijhoudt geldt [`patterns/sync-feed`](../../patterns/sync-feed/next.yaml) |
 | [`patterns/error-responses`](../../patterns/error-responses/v0.0.1.yaml) | Landelijke API-strategie | Verwijst nog naar RFC 7807; actueel is RFC 9457 (zie [`apis/FEEDBACK.md`](../../apis/FEEDBACK.md), rode draad 4) |
 | [`patterns/file-upload`](../../patterns/file-upload/next.yaml) | Two-step pre-signed upload, praktijkpatroon | — |
+| [`patterns/weergavegegevens`](../../patterns/weergavegegevens/next.yaml) | Weergavegegevens bij verwijzingen naar iets onveranderlijks, praktijkpatroon | — |
 
 ## Conventie: ADR ↔ patroon
 

@@ -47,6 +47,12 @@ benoemd worden in plaats van stil te blijven. Zie ook
 [ADR-0007](./0007-open-data-publicatie-pull-feed.md), dat voor open data de
 pull-feed als primaire route kiest en de stream optioneel maakt.
 
+De stream zelf staat in [`patterns/event-stream`](../../patterns/event-stream/next.yaml):
+het SSE-formaat met de CloudEvent als `data`, `Last-Event-ID` en de
+`Feed-Cursor`-header op snapshot-responses, `410` bij een verlopen cursor, en
+tombstone- en redactie-events. MijnGesprekken (`apis/rest/gesprekken/next.yaml`)
+is de eerste toepassing.
+
 ## Relatie tot de strategie
 
 Behoudt het idee van events/CloudEvents, maar verschuift het van "event sourcing als leescontract" naar "snapshot + SSE voor lezen, CloudEvents voor ingest".
