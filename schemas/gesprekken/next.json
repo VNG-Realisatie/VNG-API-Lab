@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/VNG-Realisatie/vng-api-lab/main/schemas/gesprekken/next.json",
+  "title": "Gesprekken",
+  "description": "De stand van een gesprek en een gespreksbijdrage, los van een API. Gebruikt door de MijnGesprekken API (apis/rest/gesprekken/next.yaml) en door eventregisters die gesprekken als resources bijhouden: elk event wijzigt een Gesprek of Gespreksbijdrage, en de stand na het event moet aan dit schema voldoen. Velden en namen volgen het informatiemodel van de werkgroep MijnGesprek.",
+  "$defs": {
+    "Gesprek": {
+      "type": "object",
+      "description": "Een dialoog, met een aanleiding, tussen een klant van een gemeente, de gemeente en eventuele andere betrokkenen. Het gesprek loopt zolang momentEindeGesprek leeg is.",
+      "required": ["gespreksonderwerp", "aanvangsmomentGesprek", "gespreksdeelnames"],
+      "properties": {
+        "gespreksonderwerp": { "type": "string", "minLength": 1, "description": "Het onderwerp van het gesprek." },
+        "referentie": { "type": "string", "description": "Betekenisvolle referentie, gezet door de registratie." },
+        "aanleidingZaak": { "type": "string", "format": "uri", "description": "De zaak die aanleiding is voor dit gesprek. Een zaak kan aanleiding zijn voor meerdere gesprekken." },
+        "aanleidingThema": { "type": ["string", "null"], "format": "uri" },
+        "aanleidingProductDienst": { "type": ["string", "null"], "format": "uri" },
+        "aanleidingAgendaAfspraak": { "type": ["string", "null"], "format": "uri" },
+        "aanleidingPlan": { "type": ["string", "null"], "format": "uri" },
+        "aanvangsmomentGesprek": { "type": "string", "format": "date-time", "description": "Het moment dat het gesprek is gestart, gezet door de registratie." },
+        "momentEindeGesprek": { "type": ["string", "null"], "format": "date-time", "description": "Het moment dat het gesprek is beëindigd. Leeg zolang het gesprek loopt." },
+        "contactmoment": { "type": ["string", "null"], "format": "uri", "description": "Het klantcontact (Klantinteracties API) waartoe het gesprek heeft geleid, gezet bij afsluiten." },
+        "gespreksdeelnames": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Wie deelneemt aan het gesprek. Een kleine lijst die zelden verandert, daarom onderdeel van het gesprek.",
+          "items": { "$ref": "#/$defs/Gespreksdeelname" }
+        }
+      }
+    },
+    "Gespreksdeelname": {
+      "type": "object",
+      "description": "De deelname van een Partij of Actor aan dit ene gesprek. Gegevens over de persoon staan bij de Partij of Actor in Klantinteracties, niet hier.",
+      "required": ["type", "naam"],
+      "properties": {
+        "type": { "enum": ["partij", "actor"], "description": "Of partij of actor is ingevuld." },
+        "partij": { "type": ["string", "null"], "format": "uri", "description": "De Partij (Klantinteracties API), bij type partij." },
+        "actor": { "type": ["string", "null"], "format": "uri", "description": "De Actor (Klantinteracties API), bij type actor." },
+        "naam": { "type": "string", "description": "Weergavenaam van de deelnemer in het gesprek." },
+        "namens": { "type": ["string", "null"], "format": "uri", "description": "De Partij namens wie deze deelnemer optreedt, bijvoorbeeld als curator of bewindvoerder. Alleen voor weergave." },
+        "aanvangsmomentDeelname": { "type": "string", "format": "date-time" },
+        "momentEindeDeelname": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "oneOf": [
+        { "properties": { "type": { "const": "partij" } }, "required": ["partij"] },
+        { "properties": { "type": { "const": "actor" } }, "required": ["actor"] }
+      ]
+    },
+    "Gespreksbijdrage": {
+      "type": "object",
+      "description": "Wat een deelnemer toevoegt aan een gesprek. Een bijdrage is een eigen resource met een verwijzing naar het gesprek.",
+      "required": ["gesprek", "tekstGespreksBijdrage", "verzender", "leveringsmoment"],
+      "properties": {
+        "gesprek": { "type": "string", "format": "uri", "description": "Het gesprek waartoe deze bijdrage behoort." },
+        "tekstGespreksBijdrage": { "type": "string", "minLength": 1, "maxLength": 5000 },
+        "verzender": { "type": "string", "format": "uri", "description": "De partij of actor die de bijdrage leverde, gezet door de registratie." },
+        "leveringsmoment": { "type": "string", "format": "date-time", "description": "Het moment dat de bijdrage is geleverd, gezet door de registratie." },
+        "isReactieOp": { "type": ["string", "null"], "format": "uri" },
+        "automatisch": { "type": "boolean", "default": false, "description": "true als dit een automatisch antwoord van een systeem-Actor is." },
+        "bijlagen": { "type": "array", "items": { "$ref": "#/$defs/Bijlage" }, "default": [] }
+      }
+    },
+    "Bijlage": {
+      "type": "object",
+      "description": "Een verwijzing naar een bestand (patterns/file-upload), met weergavegegevens (patterns/weergavegegevens).",
+      "required": ["bestand"],
+      "properties": {
+        "bestand": { "type": "string", "format": "uri" },
+        "titel": { "type": "string" },
+        "bestandsnaam": { "type": "string" },
+        "contentType": { "type": "string" },
+        "bestandsomvang": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
