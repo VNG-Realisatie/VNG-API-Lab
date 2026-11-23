@@ -128,11 +128,64 @@ info:
     | `gesprekken.bijwerken` | `POST /gespreksdeelnames`, `POST /gesprekken/{uuid}/eindigen`, `POST /gespreksdeelnames/{uuid}/eindigen`, `POST /gespreksbijdragen/{uuid}/gelezen` |
     | `gesprekken.redigeren` | `POST /gespreksbijdragen/{uuid}/redigeren` |
 
-    `gesprekken.redigeren` is voor beheer, niet voor deelnemers. Welke
-    gesprekken een aanroeper mag zien (autorisatie per gesprek, ook bij
-    vertegenwoordiging) is nog niet vastgelegd; dat volgt uit de
-    autorisatiethread. Een scope geeft geen toegang tot gesprekken waaraan
-    de aanroeper niet mag deelnemen.
+    `gesprekken.redigeren` is voor beheer, niet voor deelnemers. Een scope
+    geeft geen toegang tot gesprekken waaraan de aanroeper niet mag
+    deelnemen.
+
+    ### Autorisatie per gesprek
+
+    **Regel: wie deelneemt, mag het gesprek zien.** De registratie dwingt dat
+    zelf af, per gesprek, ook in lijsten en op `/events`. Een gesprek waaraan
+    de aanroeper niet deelneemt, bestaat voor hem niet: `404` op het detail,
+    en het ontbreekt in `GET /gesprekken`.
+
+    **De identiteit komt uit het token, niet uit de request.** Een inwoner of
+    organisatie vraagt "mijn gesprekken" op met `GET /gesprekken` zonder
+    filter; de registratie leidt de deelnemer af uit het token. Er is geen
+    BSN-, KvK- of e-mailparameter, zoals in `patterns/federated-auth`.
+
+    **Namens iemand handelen** gaat met OAuth 2.0 Token Exchange (RFC 8693).
+    Een backend, zoals een MijnOmgeving, ruilt de sessie van de ingelogde
+    inwoner in voor een kortlevend token voor deze API (`aud`), met zichzelf
+    als `act`:
+
+    ```json
+    {
+      "sub": "<identiteit van de inwoner>",
+      "act": { "sub": "<client-id van de MijnOmgeving>" },
+      "aud": "https://gesprekken.gemeente.example"
+    }
+    ```
+
+    - `sub` bepaalt welke gesprekken zichtbaar zijn.
+    - `act` bepaalt wie de handeling uitvoert; de registratie logt beide.
+    - Bij vertegenwoordiging (curator, bewindvoerder, gemachtigde) is de
+      keten genest: `sub` = vertegenwoordigde, `act.sub` = vertegenwoordiger,
+      `act.act.sub` = de MijnOmgeving. De tokenuitgever controleert de
+      machtiging; de registratie vertrouwt de keten en zet bij een nieuwe
+      deelname `namens`.
+    - Een bijdrage krijgt als verzender de deelname van `act.sub` als die er
+      is, anders die van `sub`.
+
+    Een gemachtigde kan zo nooit meer zien dan de vertegenwoordigde, en een
+    fout in de MijnOmgeving lekt geen gesprekken van anderen.
+
+    **Overgang: vertrouwde backend.** Een MijnOmgeving die nu met één
+    applicatietoken werkt (ZGW-JWT of `clientCredentials`), mag dat tijdelijk
+    blijven doen. Zij filtert dan zelf met `gespreksdeelname__partij` of
+    `gespreksdeelname__actor` (URL's, nooit een BSN) en is zelf
+    verantwoordelijk voor de afscherming. De registratie logt elke opvraag
+    met het client-id. Dit is bedoeld voor de pilot; het doel is token
+    exchange.
+
+    **Medewerkers** zien gesprekken waarin hun Actor deelneemt, plus wat hun
+    rol in de registratie toestaat (bijvoorbeeld alle gesprekken bij zaken
+    van hun zaaktype). Die rolregels vallen buiten deze API.
+
+    Open: welke claimnamen de identiteit dragen (`sub` met een
+    BSN-pseudoniem, of een aparte claim) en of DigiD Machtigen en
+    eHerkenning de `act`-keten al zo leveren. Dat hoort in
+    `patterns/federated-auth`.
 
     ## Bewaren, verwijderen en redigeren
 
