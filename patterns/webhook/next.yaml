@@ -1,0 +1,193 @@
+# Webhook Pattern
+# Herbruikbare bouwstenen om een afnemer met een webhook te laten weten dat er
+# nieuwe events zijn. De webhook is een seintje; de eventstroom blijft de
+# waarheid.
+#
+# Implementeert: ADR-0008 (webhook als seintje bij de eventstroom).
+# Hoort bij patterns/event-stream (ADR-0002): zelfde events, zelfde cursor.
+# Zie ../../architecture/adr/README.md
+
+title: Webhook (seintje bij de eventstroom)
+description: |
+  Een tweede manier om de events van [`patterns/event-stream`](../event-stream/next.yaml)
+  te bezorgen: in plaats van een open SSE-verbinding registreert een afnemer
+  een callback-URL, en de bron POST daar een bericht naartoe als er iets is
+  veranderd. Bedoeld voor afnemers die geen langlopende verbinding willen of
+  kunnen houden, zoals een portal met alleen een webserver.
+
+  **Seintje, geen kanaal.** Een webhookbericht zegt "er is iets veranderd,
+  tot en met deze cursor". De afnemer haalt de events zelf op met
+  `GET /events` en `Last-Event-ID` (of de resource via de REST-endpoints).
+  Daardoor:
+
+  - hoeft de bron niet te garanderen dat elk bericht aankomt: een gemist
+    seintje haalt de afnemer bij het volgende seintje vanzelf in;
+  - geldt dezelfde autorisatie als bij `/events`, want de inhoud komt via de
+    gewone, geautoriseerde aanroep;
+  - is er één eventmodel, één cursor en één plek voor verwijderen en
+    redactie.
+
+  Een bron mag het volledige CloudEvent meesturen (`modus: volledig`) voor
+  afnemers die dat willen. De cursor blijft ook dan leidend: een afnemer die
+  een gat ziet in `sequence`, haalt het verschil op via `/events`.
+
+  **Abonneren.** Een API die webhooks aanbiedt, heeft een resource
+  `/abonnementen` met de schema's hieronder:
+
+  - `POST /abonnementen` met `callbackUrl`, een optioneel filter (dezelfde
+    filters als `/events`, bijvoorbeeld `aanleidingZaak`) en de `modus`.
+    De response bevat eenmalig het `geheim` voor de ondertekening.
+  - `GET /abonnementen/{uuid}` en `DELETE /abonnementen/{uuid}`.
+
+  Een abonnement hoort bij de aanroeper (het client-id uit het token). Het
+  filter versmalt alleen; het verruimt nooit wat de aanroeper via `/events`
+  mag zien. Bij het aanmaken stuurt de bron een testbericht
+  (`type: nl.vng.webhook.verificatie`); het abonnement wordt pas actief als
+  de callback met `2xx` antwoordt.
+
+  **Bezorgen.** De bron POST het bericht als `application/json` naar de
+  `callbackUrl`, ondertekend volgens
+  [Standard Webhooks](https://www.standardwebhooks.com/) (headers
+  `webhook-id`, `webhook-timestamp`, `webhook-signature`; HMAC-SHA256 met
+  het geheim). De afnemer controleert de handtekening en weigert berichten
+  ouder dan 5 minuten. Alleen `https`.
+
+  - Antwoord `2xx` binnen 10 seconden; doe het werk daarna.
+  - Bij een fout of time-out probeert de bron het opnieuw met oplopende
+    wachttijd, ten hoogste 24 uur. Daarna mag de bron het abonnement op
+    `gepauzeerd` zetten; de afnemer ziet dat in `GET /abonnementen/{uuid}`
+    en haalt na herstel alles in via `/events`.
+  - Seintjes mogen worden samengevoegd: één bericht met de hoogste cursor
+    volstaat voor meerdere events.
+  - Levering is at-least-once; de afnemer ontdubbelt op `webhook-id`.
+
+  **Privacy.** Een seintje bevat alleen verwijzingen (`subject`, eventuele
+  routeringsextensies) en de cursor, nooit inhoud of persoonsgegevens. Bij
+  `modus: volledig` gelden de privacyregels van `patterns/event-stream`.
+
+  **Optionaliteit.** Een implementatie zonder webhooks blijft een geldige
+  implementatie van de API; afnemers gebruiken dan `/events` of pollen.
+
+parameters:
+  AbonnementUuid:
+    name: uuid
+    in: path
+    required: true
+    description: UUID van het abonnement.
+    schema:
+      type: string
+      format: uuid
+
+schemas:
+  AbonnementCreate:
+    type: object
+    required:
+      - callbackUrl
+    properties:
+      callbackUrl:
+        type: string
+        format: uri
+        pattern: "^https://"
+        description: De URL waar de bron de berichten naartoe POST.
+        example: "https://portal.gemeente.example/webhooks/gesprekken"
+      filter:
+        type: object
+        additionalProperties:
+          type: array
+          items:
+            type: string
+        description: |
+          Versmalt de berichten tot bepaalde onderwerpen, met dezelfde namen
+          en waarden als de filters op `GET /events` van de API. Leeg: alles
+          wat de aanroeper mag lezen.
+        example:
+          aanleidingZaak: ["https://zaken.example.com/api/v1/zaken/def456"]
+      modus:
+        type: string
+        enum: [seintje, volledig]
+        default: seintje
+        description: |
+          `seintje`: alleen verwijzingen en cursor (aanbevolen).
+          `volledig`: het hele CloudEvent zoals op `/events`.
+
+  Abonnement:
+    allOf:
+      - $ref: "#/schemas/AbonnementCreate"
+      - type: object
+        required:
+          - url
+          - status
+        properties:
+          url:
+            type: string
+            format: uri
+            readOnly: true
+          status:
+            type: string
+            enum: [verificatie, actief, gepauzeerd]
+            readOnly: true
+            description: |
+              `verificatie` tot de callback het testbericht heeft bevestigd;
+              `gepauzeerd` na 24 uur mislukte bezorging.
+          geheim:
+            type: string
+            readOnly: true
+            description: |
+              Het geheim voor de ondertekening (Standard Webhooks, `whsec_…`).
+              Alleen in de response op `POST /abonnementen`; daarna nooit meer.
+          laatsteCursor:
+            type: string
+            readOnly: true
+            description: De cursor van het laatst bezorgde bericht.
+
+  Seintje:
+    type: object
+    description: |
+      Het bericht bij `modus: seintje`. Haal de events op met
+      `GET /events` en `Last-Event-ID` gelijk aan de laatst verwerkte
+      cursor; `sequence` is de hoogste cursor die het seintje meldt.
+    required:
+      - type
+      - source
+      - sequence
+    properties:
+      type:
+        type: string
+        description: |
+          Het CloudEvent-`type` van het laatste gemelde event, of
+          `nl.vng.webhook.verificatie` bij het testbericht.
+        example: nl.vng.gesprekken.gespreksbijdrage.aangemaakt
+      source:
+        type: string
+        format: uri-reference
+        example: "https://gesprekken.example.com/api/v1"
+      subject:
+        type: string
+        format: uri
+        description: De onderwerp-resource van het laatste gemelde event.
+        example: "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
+      sequence:
+        type: string
+        description: Hoogste cursor in dit seintje.
+        example: "18424"
+      aantal:
+        type: integer
+        minimum: 1
+        description: Aantal events dat dit seintje samenvat.
+    additionalProperties:
+      type: string
+      description: Routeringsextensies uit het CloudEvent, zoals `aanleidingzaak`.
+
+headers:
+  WebhookId:
+    description: Unieke id van het bericht (Standard Webhooks). Ontdubbel hierop.
+    schema:
+      type: string
+  WebhookTimestamp:
+    description: Unix-tijd van verzending. Weiger berichten ouder dan 5 minuten.
+    schema:
+      type: integer
+  WebhookSignature:
+    description: "`v1,<base64 HMAC-SHA256>` over `id.timestamp.body` met het geheim."
+    schema:
+      type: string

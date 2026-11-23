@@ -28,6 +28,7 @@ het herbruikbare bouwblok dat eruit volgt.
 | [0005](./0005-dunne-gateway-client-side-aggregatie.md) | Dunne token/CORS-gateway + client-side aggregatie | Voorgesteld | [`patterns/federated-auth`](../../patterns/federated-auth/next.yaml) |
 | [0006](./0006-per-domein-registers.md) | Per-domein registers & governance | Voorgesteld | [`apis/rest/discovery`](../../apis/rest/discovery/next.yaml) (verwijsindex) |
 | [0007](./0007-open-data-publicatie-pull-feed.md) | Open data: publicatie via pull-feed (bakent 0004 af) | Voorgesteld | [`patterns/sync-feed`](../../patterns/sync-feed/next.yaml) |
+| [0008](./0008-webhook-als-seintje.md) | Webhook als seintje bij de eventstroom (bakent 0004 af) | Voorgesteld | [`patterns/webhook`](../../patterns/webhook/next.yaml) |
 
 Patronen zonder ADR — er ligt geen architectuurbesluit aan ten grondslag, ze
 zijn overgenomen uit bestaande conventies:
