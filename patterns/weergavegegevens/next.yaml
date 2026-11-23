@@ -1,0 +1,82 @@
+# Weergavegegevens Pattern
+# Herkomst: praktijkpatroon, uit de review van MijnGesprekken; geen onderliggend
+# architectuurbesluit. Zie ../../architecture/adr/README.md
+
+title: Weergavegegevens
+description: |
+  Laat een verwijzing een klein, vast setje gegevens meenemen, zodat een
+  client iets kan tonen zonder per item een extra aanroep.
+
+  **Probleem.** Een kale verwijzing dwingt een client om voor elk item nog een
+  API aan te roepen, alleen om een icoontje, naam of samenvatting te tonen.
+  Bij een lijst met 20 items zijn dat 20 extra aanroepen (N+1), en een event
+  bevat te weinig om iets te tonen.
+
+  **Oplossing.** Verwijst een resource naar iets dat niet meer verandert (een
+  vast bestand of documentversie, een verstuurde bijdrage), dan mag die verwijzing
+  weergavegegevens bevatten.
+
+  **Regels.**
+
+  - **Alleen voor onveranderlijke doelen.** Verwijs naar een vaste versie of
+    een item dat niet wijzigt, zodat de kopie niet kan verouderen.
+  - **De verwijzing blijft leidend.** De URL is de bron; weergavegegevens zijn
+    alleen voor tonen. Ontbreken ze, dan valt de client terug op de URL.
+  - **Klein en vast.** Alleen de velden die nodig zijn om het item te tonen,
+    vastgelegd in de specificatie. Geen kopie van de hele resource.
+  - **Geen persoonsgegevens.** Gegevens over een persoon blijven een
+    verwijzing ("verwijzen, niet inbedden"). Vrije tekst kan die toch
+    bevatten: neem vrije tekst alleen op in responses die per aanroeper
+    autoriseren, niet in events.
+  - **Alleen-lezen.** De registratie vult de velden; een client geeft ze niet
+    op.
+  - **Events.** Events bevatten dezelfde weergavegegevens als de REST-response,
+    met de uitzondering voor vrije tekst hierboven.
+
+  **Waarom geen `expand`.** ZGW kent `expand` om verwezen resources mee te
+  sturen. Dat spaart aanroepen aan de clientkant, maar de server doet het werk
+  dan bij elke aanvraag opnieuw, en de eventstroom heeft er niets aan.
+
+  **Hoe te gebruiken.**
+
+  ```yaml
+  Bijlage:
+    allOf:
+      - $ref: "../../patterns/weergavegegevens/next.yaml#/schemas/DocumentWeergave"
+      - type: object
+        required: [bestand]
+        properties:
+          bestand:
+            type: string
+            format: uri
+  ```
+
+schemas:
+  DocumentWeergave:
+    type: object
+    description: |
+      Weergavegegevens van een vast bestand of een vaste documentversie, met
+      dezelfde namen als `Bestand` in `schemas/file-upload`. Alle velden zijn
+      optioneel en alleen-lezen.
+    properties:
+      titel:
+        type: string
+        readOnly: true
+        description: Titel van het document.
+        example: "Loonstrook oktober"
+      bestandsnaam:
+        type: string
+        readOnly: true
+        description: Naam van het bestand inclusief extensie.
+        example: "loonstrook-oktober.pdf"
+      contentType:
+        type: string
+        readOnly: true
+        description: MIME-type, bijvoorbeeld voor een icoontje.
+        example: "application/pdf"
+      bestandsomvang:
+        type: integer
+        minimum: 0
+        readOnly: true
+        description: Grootte in bytes.
+        example: 184320
