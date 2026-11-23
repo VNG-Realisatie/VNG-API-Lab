@@ -1,1 +1,28 @@
 extends: spectral:oas
+
+# Smalle uitzonderingen voor bestanden die we niet mogen aanpassen. De regels
+# blijven als warning zichtbaar; alleen de error-severity (die CI breekt) gaat
+# eraf, en alleen voor deze bestanden.
+overrides:
+  # As-is imports van Maykin-registers (Open Klant, Open Plan). De voorbeelden
+  # komen ongewijzigd uit upstream; fixen hoort daar, niet in deze kopie.
+  - files:
+      - "apis/rest/openklant-klantinteracties/mijnoverheid-demo.yaml"
+      - "apis/rest/openplan-plannen/next.yaml"
+    rules:
+      oas3-valid-media-example: warn
+  # As-is import van ZGW Zaken 1.6.0 (VNG): $ref met siblings komt uit upstream.
+  - files:
+      - "apis/rest/zgw-zaken/v1.6.0.yaml"
+    rules:
+      no-$ref-siblings: warn
+  # Bevroren schemaversie schemas/discovery/v0.0.1.json: het voorbeeld van
+  # specUrl is een root-relatief pad (zoals de beschrijving toestaat), terwijl
+  # `format: uri` een absolute URI eist. Fix (`uri-reference`) hoort in een
+  # volgende schemaversie. Spectral matcht overrides op het gelinte document,
+  # dus de scope is de enige spec die dit schema laadt. Die spec heeft geen
+  # eigen schema-voorbeelden; oas3-valid-media-example blijft daar een error.
+  - files:
+      - "apis/rest/discovery/next.yaml"
+    rules:
+      oas3-valid-schema-example: warn

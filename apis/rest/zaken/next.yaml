@@ -3,10 +3,33 @@ info:
   title: MijnZaken
   description: |
     De **MijnZaken API** standaardiseert hoe portalen lopende en historische zaken (aanvragen, meldingen) van burgers kunnen raadplegen en tonen.
+
+    ## De burger komt uit het token
+
+    De API kent geen `klantId`- of BSN-parameter. De bron leidt de burger af uit het
+    toegangstoken (zie [`patterns/federated-auth`](../../../patterns/federated-auth/next.yaml))
+    en geeft alleen zaken terug waarin die burger betrokkene is. Een zaak van iemand anders
+    opvragen met een geldig eigen token geeft `403`.
+
+    ## Taken bij een zaak
+
+    Openstaande taken staan niet in de zaak zelf. Het portaal haalt ze op bij MijnTaken met
+    `GET /taken?context={urn}`, waarbij `urn` de URN van de zaak is. Zo is er één bron voor
+    een taak, en hoeft MijnZaken niets van taken te weten.
+
+    ## Data, geen presentatie
+
+    De API levert data; het portaal formatteert. Datums zijn ISO 8601, bestandsgroottes zijn
+    bytes, en er staan geen kant-en-klare teksten als "nog 2 dagen" of "2000 kB" in.
+
+    ## Conformance
+
+    Het gedrag (overzicht en detail kloppen met elkaar, autorisatie per burger) wordt getest
+    met het aansluitprofiel [`aansluitprofielen/mijnzaken/mijnzaken-next.arazzo.yaml`](../../../aansluitprofielen/mijnzaken/mijnzaken-next.arazzo.yaml).
   version: next
   contact:
     name: VNG Realisatie
-    url: https://github.com/vng-realisatie/mijn-omgeving
+    url: https://github.com/VNG-Realisatie/vng-api-lab
     email: standaarden.ondersteuning@vng.nl
   license:
     name: EUPL-1.2
@@ -20,21 +43,27 @@ tags:
   - name: Zaken
     description: Raadpleeg zaken en details van lopende dossiers.
 
+security:
+  - FederatedOAuth2: [zaken:lezen]
+
 paths:
-  /zaken/zoek:
-    post:
-      operationId: zoekZaken
-      summary: Zoek zaken van een klant
+  /zaken:
+    get:
+      operationId: listZaken
+      summary: Zaken van de ingelogde burger
       description: |
-        Retourneert een lijst van zaken van de opgegeven klant als samenvattingen.
+        Geeft een gepagineerde lijst van zaken waarin de burger uit het token betrokkene is,
+        als samenvattingen. Nieuwste aanvraag eerst.
       tags:
         - Zaken
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ZaakQuery"
+      parameters:
+        - name: status
+          in: query
+          description: Alleen open of alleen gesloten zaken.
+          schema:
+            $ref: "#/components/schemas/ZaakStatus"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
       responses:
         "200":
           description: Succesvol
@@ -44,60 +73,82 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ZaakSamenvatting"
+                $ref: "#/components/schemas/ZaakSamenvattingLijst"
               example:
-                - uuid: "550e8400-e29b-41d4-a716-446655440000"
-                  zaaknummer: "11234899818"
-                  naam: "Aanvraag subsidie geluidisolatie"
-                  status: "Open"
-                  datumAanvraag: "2024-10-17"
-                - uuid: "9a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"
-                  zaaknummer: "22019283841"
-                  naam: "Wmo-melding"
-                  status: "Open"
-                  datumAanvraag: "2024-09-29"
-                - uuid: "3b9542a1-a212-4f18-912c-6fa870d42999"
-                  zaaknummer: "33019283842"
-                  naam: "Opzeggen parkeervergunning"
-                  status: "Open"
-                  datumAanvraag: "2023-12-05"
-                - uuid: "7c12fbf6-e8ad-4c33-8e9c-095be615a8ad"
-                  zaaknummer: "44019283843"
-                  naam: "Aanvraag afkoop canon Keukenlaan 133"
-                  status: "Open"
-                  datumAanvraag: "2023-12-05"
-                - uuid: "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"
-                  zaaknummer: "55019283844"
-                  naam: "Adres onderzoek"
-                  status: "Open"
-                  datumAanvraag: "2023-12-05"
-                - uuid: "2f3e4d5c-6b7a-8d9e-0f1a-2b3c4d5e6f7a"
-                  zaaknummer: "66019283845"
-                  naam: "Bezwaar tegen waardering onroerende zaken"
-                  status: "Open"
-                  datumAanvraag: "2023-12-05"
-                - uuid: "8d9e0f1a-2b3c-4d5e-6f7a-8b9c0d1e2f3a"
-                  zaaknummer: "77019283846"
-                  naam: "Aanvraag vakantieverhuur Dierenselaan 88"
-                  status: "Gesloten"
-                  datumAanvraag: "2023-12-05"
-                - uuid: "9b0c1d2e-3f4a-5b6c-7d8e-9f0a1b2c3d4e"
-                  zaaknummer: "88019283847"
-                  naam: "Aanvraag mantelzorg parkeervergunning"
-                  status: "Gesloten"
-                  datumAanvraag: "2023-12-05"
-                - uuid: "0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d"
-                  zaaknummer: "99019283848"
-                  naam: "Aanvraag parkeervergunning"
-                  status: "Gesloten"
-                  datumAanvraag: "2023-12-05"
-                - uuid: "1b2c3d4e-5f6a-7b8c-9d0e-1f2a3b4c5d6e"
-                  zaaknummer: "10019283849"
-                  naam: "Verhuizing doorgeven"
-                  status: "Gesloten"
-                  datumAanvraag: "2023-11-03"
+                count: 10
+                next: null
+                previous: null
+                results:
+                  - uuid: "550e8400-e29b-41d4-a716-446655440000"
+                    zaaknummer: "11234899818"
+                    urn: "urn:nl:gemeenten:zaak:11234899818"
+                    naam: "Aanvraag subsidie geluidisolatie"
+                    status: "open"
+                    huidigeStatus: "Onderzoek naar geluidsoverlast"
+                    datumAanvraag: "2022-10-17"
+                  - uuid: "9a2b3c4d-5e6f-4a8b-9c0d-1e2f3a4b5c6d"
+                    zaaknummer: "22019283841"
+                    urn: "urn:nl:gemeenten:zaak:22019283841"
+                    naam: "Wmo-melding"
+                    status: "open"
+                    huidigeStatus: "In behandeling"
+                    datumAanvraag: "2024-09-29"
+                  - uuid: "3b9542a1-a212-4f18-912c-6fa870d42999"
+                    zaaknummer: "33019283842"
+                    urn: "urn:nl:gemeenten:zaak:33019283842"
+                    naam: "Opzeggen parkeervergunning"
+                    status: "open"
+                    huidigeStatus: "Ontvangen"
+                    datumAanvraag: "2023-12-05"
+                  - uuid: "7c12fbf6-e8ad-4c33-8e9c-095be615a8ad"
+                    zaaknummer: "44019283843"
+                    urn: "urn:nl:gemeenten:zaak:44019283843"
+                    naam: "Aanvraag afkoop canon Keukenlaan 133"
+                    status: "open"
+                    huidigeStatus: "In behandeling"
+                    datumAanvraag: "2023-12-05"
+                  - uuid: "1a2b3c4d-5e6f-4a8b-9c0d-1e2f3a4b5c6d"
+                    zaaknummer: "55019283844"
+                    urn: "urn:nl:gemeenten:zaak:55019283844"
+                    naam: "Adres onderzoek"
+                    status: "open"
+                    huidigeStatus: "Onderzoek gestart"
+                    datumAanvraag: "2023-12-05"
+                  - uuid: "2f3e4d5c-6b7a-4d9e-8f1a-2b3c4d5e6f7a"
+                    zaaknummer: "66019283845"
+                    urn: "urn:nl:gemeenten:zaak:66019283845"
+                    naam: "Bezwaar tegen waardering onroerende zaken"
+                    status: "open"
+                    huidigeStatus: "Bezwaar ontvangen"
+                    datumAanvraag: "2023-12-05"
+                  - uuid: "8d9e0f1a-2b3c-4d5e-8f7a-8b9c0d1e2f3a"
+                    zaaknummer: "77019283846"
+                    urn: "urn:nl:gemeenten:zaak:77019283846"
+                    naam: "Aanvraag vakantieverhuur Dierenselaan 88"
+                    status: "gesloten"
+                    huidigeStatus: "Afgerond"
+                    datumAanvraag: "2023-12-05"
+                  - uuid: "9b0c1d2e-3f4a-4b6c-8d8e-9f0a1b2c3d4e"
+                    zaaknummer: "88019283847"
+                    urn: "urn:nl:gemeenten:zaak:88019283847"
+                    naam: "Aanvraag mantelzorg parkeervergunning"
+                    status: "gesloten"
+                    huidigeStatus: "Afgerond"
+                    datumAanvraag: "2023-12-05"
+                  - uuid: "0a1b2c3d-4e5f-4a7b-8c9d-0e1f2a3b4c5d"
+                    zaaknummer: "99019283848"
+                    urn: "urn:nl:gemeenten:zaak:99019283848"
+                    naam: "Aanvraag parkeervergunning"
+                    status: "gesloten"
+                    huidigeStatus: "Afgerond"
+                    datumAanvraag: "2023-12-05"
+                  - uuid: "1b2c3d4e-5f6a-4b8c-9d0e-1f2a3b4c5d6e"
+                    zaaknummer: "10019283849"
+                    urn: "urn:nl:gemeenten:zaak:10019283849"
+                    naam: "Verhuizing doorgeven"
+                    status: "gesloten"
+                    huidigeStatus: "Afgerond"
+                    datumAanvraag: "2023-11-03"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -116,7 +167,8 @@ paths:
       operationId: retrieveZaak
       summary: Haal details van één zaak op
       description: |
-        Geeft de volledige status en geschiedenis van een zaak terug.
+        Geeft de volledige status en geschiedenis van een zaak terug. De velden die ook in de
+        samenvatting staan, hebben dezelfde waarde als in `GET /zaken`.
       tags:
         - Zaken
       responses:
@@ -132,13 +184,11 @@ paths:
               example:
                 uuid: "550e8400-e29b-41d4-a716-446655440000"
                 zaaknummer: "11234899818"
+                urn: "urn:nl:gemeenten:zaak:11234899818"
                 naam: "Aanvraag subsidie geluidisolatie"
-                status: "Open"
+                status: "open"
+                huidigeStatus: "Onderzoek naar geluidsoverlast"
                 datumAanvraag: "2022-10-17"
-                openstaandeTaak:
-                  titel: "Geef informatie voor uw aanvraag subsidie geluidsisolatie"
-                  deadlineText: "nog 2 dagen"
-                  actieUrl: "#zaken/informatie"
                 statushistorie:
                   - nummer: 1
                     titel: "Deelname aan geluidsonderzoek"
@@ -156,31 +206,41 @@ paths:
                     titel: "Woning verbeteringen uitgevoerd"
                     status: "gepland"
                 documenten:
-                  - naam: "example3"
-                    type: "png"
-                    grootte: "2000 kB"
+                  - uuid: "c1a0e2b4-1111-4a1a-8a1a-000000000001"
+                    naam: "example3"
+                    formaat: "image/png"
+                    bestandsgrootte: 2048000
                     datum: "2024-08-31"
-                    bron: "Door u geupload"
-                  - naam: "Ontvangstbevestiging"
-                    type: "pdf"
-                    grootte: "116 kB"
+                    bron: "burger"
+                    downloadUrl: "https://api.example.nl/v1/documenten/c1a0e2b4-1111-4a1a-8a1a-000000000001/download"
+                  - uuid: "c1a0e2b4-1111-4a1a-8a1a-000000000002"
+                    naam: "Ontvangstbevestiging"
+                    formaat: "application/pdf"
+                    bestandsgrootte: 118784
                     datum: "2022-10-17"
-                    bron: "Van de gemeente"
-                  - naam: "Rapport geluidsonderzoek"
-                    type: "pdf"
-                    grootte: "854 kB"
+                    bron: "organisatie"
+                    downloadUrl: "https://api.example.nl/v1/documenten/c1a0e2b4-1111-4a1a-8a1a-000000000002/download"
+                  - uuid: "c1a0e2b4-1111-4a1a-8a1a-000000000003"
+                    naam: "Rapport geluidsonderzoek"
+                    formaat: "application/pdf"
+                    bestandsgrootte: 874496
                     datum: "2023-01-05"
-                    bron: "Van de gemeente"
-                  - naam: "Offerte woningverbetering"
-                    type: "pdf"
-                    grootte: "430 kB"
+                    bron: "organisatie"
+                    downloadUrl: "https://api.example.nl/v1/documenten/c1a0e2b4-1111-4a1a-8a1a-000000000003/download"
+                  - uuid: "c1a0e2b4-1111-4a1a-8a1a-000000000004"
+                    naam: "Offerte woningverbetering"
+                    formaat: "application/pdf"
+                    bestandsgrootte: 440320
                     datum: "2023-01-12"
-                    bron: "Door u geupload"
-                  - naam: "Besluit subsidie"
-                    type: "pdf"
-                    grootte: "230 kB"
+                    bron: "burger"
+                    downloadUrl: "https://api.example.nl/v1/documenten/c1a0e2b4-1111-4a1a-8a1a-000000000004/download"
+                  - uuid: "c1a0e2b4-1111-4a1a-8a1a-000000000005"
+                    naam: "Besluit subsidie"
+                    formaat: "application/pdf"
+                    bestandsgrootte: 235520
                     datum: "2023-09-29"
-                    bron: "Van de gemeente"
+                    bron: "organisatie"
+                    downloadUrl: "https://api.example.nl/v1/documenten/c1a0e2b4-1111-4a1a-8a1a-000000000005/download"
                 contactmomenten:
                   - datum: "2022-12-01"
                     kanaal: "mail"
@@ -214,24 +274,61 @@ paths:
                     tekst: "Er is naar u een brief verstuurd over actie woningverbetering verkeersgeluid bewoner"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
 
 components:
+  parameters:
+    page:
+      name: page
+      in: query
+      description: Het paginanummer dat moet worden opgehaald.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    pageSize:
+      name: pageSize
+      in: query
+      description: Het aantal items per pagina.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
   schemas:
-    ZaakQuery:
+    ZaakStatus:
+      type: string
+      description: Of de zaak nog loopt. De inhoudelijke stap staat in `huidigeStatus`.
+      enum: [open, gesloten]
+
+    ZaakSamenvattingLijst:
+      description: Gepagineerde lijst volgens `patterns/pagination`.
       type: object
-      required:
-        - klantId
+      required: [count, next, previous, results]
       properties:
-        klantId:
-          type: string
-          example: "a8f3c1d2-7e44-4b1a-9c0f-123456789abc"
+        count:
+          type: integer
+          description: Totaal aantal zaken over alle pagina's.
+        next:
+          type: [string, "null"]
+          format: uri
+        previous:
+          type: [string, "null"]
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ZaakSamenvatting"
 
     ZaakSamenvatting:
       type: object
       required:
         - uuid
+        - urn
         - zaaknummer
         - naam
         - status
@@ -241,6 +338,13 @@ components:
           type: string
           format: uuid
           example: "550e8400-e29b-41d4-a716-446655440000"
+        urn:
+          type: string
+          pattern: "^urn:"
+          description: |
+            Organisatie-onafhankelijke identifier van de zaak. Andere Mijn-API's verwijzen
+            hiermee naar de zaak, bijvoorbeeld `context.urn` in MijnTaken.
+          example: "urn:nl:gemeenten:zaak:11234899818"
         zaaknummer:
           type: string
           example: "11234899818"
@@ -248,60 +352,37 @@ components:
           type: string
           example: "Aanvraag subsidie geluidisolatie"
         status:
+          $ref: "#/components/schemas/ZaakStatus"
+        huidigeStatus:
           type: string
-          enum: [Open, Gesloten]
-          example: "Open"
+          description: Titel van de huidige stap in `statushistorie`.
+          example: "Onderzoek naar geluidsoverlast"
         datumAanvraag:
           type: string
           format: date
-          example: "2024-10-17"
+          example: "2022-10-17"
 
     ZaakDetail:
-      type: object
-      required:
-        - uuid
-        - zaaknummer
-        - naam
-        - status
-        - datumAanvraag
-        - statushistorie
-        - documenten
-        - contactmomenten
-      properties:
-        uuid:
-          type: string
-          format: uuid
-        zaaknummer:
-          type: string
-        naam:
-          type: string
-        status:
-          type: string
-          enum: [Open, Gesloten]
-        datumAanvraag:
-          type: string
-          format: date
-        openstaandeTaak:
-          type: object
+      allOf:
+        - $ref: "#/components/schemas/ZaakSamenvatting"
+        - type: object
+          required:
+            - statushistorie
+            - documenten
+            - contactmomenten
           properties:
-            titel:
-              type: string
-            deadlineText:
-              type: string
-            actieUrl:
-              type: string
-        statushistorie:
-          type: array
-          items:
-            $ref: "#/components/schemas/StatusStap"
-        documenten:
-          type: array
-          items:
-            $ref: "#/components/schemas/ZaakDocument"
-        contactmomenten:
-          type: array
-          items:
-            $ref: "#/components/schemas/Contactmoment"
+            statushistorie:
+              type: array
+              items:
+                $ref: "#/components/schemas/StatusStap"
+            documenten:
+              type: array
+              items:
+                $ref: "#/components/schemas/ZaakDocument"
+            contactmomenten:
+              type: array
+              items:
+                $ref: "#/components/schemas/Contactmoment"
 
     StatusStap:
       type: object
@@ -325,23 +406,38 @@ components:
     ZaakDocument:
       type: object
       required:
+        - uuid
         - naam
-        - type
-        - grootte
+        - formaat
+        - bestandsgrootte
         - datum
         - bron
+        - downloadUrl
       properties:
+        uuid:
+          type: string
+          format: uuid
         naam:
           type: string
-        type:
+        formaat:
           type: string
-        grootte:
-          type: string
+          description: MIME-type.
+          example: "application/pdf"
+        bestandsgrootte:
+          type: integer
+          minimum: 0
+          description: Grootte in bytes.
         datum:
           type: string
           format: date
         bron:
           type: string
+          description: Wie het document heeft aangeleverd.
+          enum: [burger, organisatie]
+        downloadUrl:
+          type: string
+          format: uri
+          description: Downloadlink. Vereist hetzelfde toegangstoken als deze API.
 
     Contactmoment:
       type: object
@@ -378,8 +474,8 @@ components:
             code: ONGELDIGE_AANVRAAG
             title: Ongeldige aanvraag
             status: 400
-            detail: "Veld 'klantId' is verplicht."
-            instance: /zaken/zoek
+            detail: "Parameter 'pageSize' mag niet groter zijn dan 100."
+            instance: /zaken
     Unauthorized:
       description: Authenticatie vereist
       content:
@@ -392,7 +488,22 @@ components:
             title: Authenticatie vereist
             status: 401
             detail: "Geen geldige toegangstoken meegestuurd."
-            instance: /zaken/zoek
+            instance: /zaken
+    Forbidden:
+      description: |
+        Geldig token, maar de burger uit het token is geen betrokkene bij deze zaak.
+        Zie `RecordNietGemachtigd` in `patterns/federated-auth`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "../../../schemas/fout/v0.0.1.json#/$defs/Fout"
+          example:
+            type: about:blank
+            code: NIET_GEMACHTIGD
+            title: Niet gemachtigd voor deze zaak
+            status: 403
+            detail: "U bent geen betrokkene bij deze zaak."
+            instance: /zaken/9a2b3c4d-5e6f-4a8b-9c0d-1e2f3a4b5c6d
     NotFound:
       description: Zaak niet gevonden
       content:
@@ -408,10 +519,14 @@ components:
             instance: /zaken/00000000-0000-4000-8000-000000000000
 
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-
-security:
-  - bearerAuth: []
+    FederatedOAuth2:
+      type: oauth2
+      description: |
+        Volgens `patterns/federated-auth`. Portalen (publieke clients) gebruiken
+        `authorizationCode` met PKCE; het token draagt de identiteit van de burger.
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.example.nl/oauth2/authorize
+          tokenUrl: https://auth.example.nl/oauth2/token
+          scopes:
+            zaken:lezen: Zaken van de ingelogde burger lezen.

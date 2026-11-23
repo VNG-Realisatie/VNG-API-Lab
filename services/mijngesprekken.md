@@ -1,5 +1,9 @@
 # Service beschrijving — MijnGesprekken
 
+| Repository | Status `next` in dit lab |
+| --- | --- |
+| [Interactie-APIs](https://github.com/VNG-Realisatie/Interactie-APIs/tree/main/apis/rest/gesprekken) | Lab-voorstel. Let op: de API is registerachtig (volledige CRUD, geen filter op burger) en daarmee nog geen burgergerichte MijnService. |
+
 Dit document beschrijft de use-cases, uitgangspunten en integratie-afspraken voor **MijnGesprekken**.
 
 ## Links

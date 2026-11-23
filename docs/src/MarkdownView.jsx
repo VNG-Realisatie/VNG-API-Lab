@@ -18,6 +18,20 @@ function injectDemoLink(markdown, demoPath) {
   return block + markdown;
 }
 
+/** Relatieve links in een document wijzen naar bestanden naast dat document. */
+function resolveLink(href, docPath) {
+  if (!href || /^([a-z][a-z0-9+.-]*:|\/|#|\?)/i.test(href)) return href;
+  const [target, hash] = href.split("#");
+  const parts = docPath.split("/").slice(0, -1);
+  for (const seg of target.split("/")) {
+    if (seg === "..") parts.pop();
+    else if (seg && seg !== ".") parts.push(seg);
+  }
+  const resolved = parts.join("/");
+  const view = resolved.endsWith(".md") ? "doc" : "file";
+  return `/?${view}=${resolved}${hash ? "#" + hash : ""}`;
+}
+
 export default function MarkdownView({ path, portalData }) {
   const [html, setHtml] = useState("Laden...");
 
@@ -33,7 +47,13 @@ export default function MarkdownView({ path, portalData }) {
         } else if (path === "docs/services.md") {
           md = injectDemoLink(text, "/mijnoverheid/");
         }
-        setHtml(marked.parse(md));
+        setHtml(
+          marked.parse(md, {
+            walkTokens: (token) => {
+              if (token.type === "link") token.href = resolveLink(token.href, path);
+            },
+          }),
+        );
       })
       .catch((e) => setHtml("Fout bij laden document: " + e.message));
   }, [path, serviceMeta?.demoPath, serviceMeta?.title]);

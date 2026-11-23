@@ -743,6 +743,11 @@ paths:
         | `nl.vng.gesprekken.gespreksbijdrage.gelezen` | `POST /gespreksbijdragen/{uuid}/gelezen` | `GelezenGespreksbijdrage` |
         | `nl.vng.gesprekken.gespreksbijdrage.geredigeerd` | `POST /gespreksbijdragen/{uuid}/redigeren` | `Redactie` |
 
+        Elk type heeft een eigen schema (`GesprekAangemaaktEvent`,
+        `GespreksbijdrageAangemaaktEvent`, enzovoort); `GesprekEvent` kiest
+        het juiste schema op `type`. Een client die een type niet kent, slaat
+        het event over.
+
         Bij `geredigeerd` verwijdert de client de inhoud van de genoemde
         events uit zijn eigen opslag (zie `Redactie` in het pattern).
 
@@ -784,11 +789,35 @@ paths:
         - $ref: '../../../patterns/event-stream/next.yaml#/parameters/LastEventId'
       responses:
         "200":
-          description: Doorlopende SSE-stroom van CloudEvents.
+          description: |
+            Doorlopende SSE-stroom. Dit is geen JSON-document maar tekst:
+            berichten van regels `id:`, `event:` en `data:`, gescheiden door een
+            lege regel. Het schema hieronder beschrijft het JSON-object in
+            `data:` (een `GesprekEvent`, per `type` een eigen schema). Regels
+            die met `:` beginnen zijn commentaar (de ping).
+
+            Voorbeeld van een stroom met drie events en een ping:
+
+            ```
+            id: 18423
+            event: nl.vng.gesprekken.gesprek.aangemaakt
+            data: {"specversion":"1.0","id":"0b6e1f2a-3c4d-4e5f-8a9b-0c1d2e3f4a5b","source":"https://gesprekken.example.com/api/v1","type":"nl.vng.gesprekken.gesprek.aangemaakt","subject":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","time":"2026-03-11T10:00:00Z","sequence":"18423","datacontenttype":"application/json","aanleidingzaak":"https://zaken.example.com/api/v1/zaken/def456","data":{"url":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","gespreksonderwerp":"Losliggende stoeptegel","aanvangsmomentGesprek":"2026-03-11T10:00:00Z","aanleidingZaak":"https://zaken.example.com/api/v1/zaken/def456"}}
+
+            id: 18424
+            event: nl.vng.gesprekken.gespreksbijdrage.aangemaakt
+            data: {"specversion":"1.0","id":"7f3c2a10-5b8e-4d21-9a6f-0c1e2d3f4a5b","source":"https://gesprekken.example.com/api/v1","type":"nl.vng.gesprekken.gespreksbijdrage.aangemaakt","subject":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","time":"2026-03-11T10:05:00Z","sequence":"18424","datacontenttype":"application/json","aanleidingzaak":"https://zaken.example.com/api/v1/zaken/def456","data":{"url":"https://gesprekken.example.com/api/v1/gespreksbijdragen/550e8400-e29b-41d4-a716-446655440001","gesprek":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","verzender":"https://gesprekken.example.com/api/v1/gespreksdeelnames/550e8400-e29b-41d4-a716-446655440000","tekstGespreksBijdrage":"Er ligt een losse stoeptegel voor Dorpsstraat 12.","leveringsmoment":"2026-03-11T10:05:00Z","bijlagen":[]}}
+
+            : ping
+
+            id: 18425
+            event: nl.vng.gesprekken.gespreksbijdrage.gelezen
+            data: {"specversion":"1.0","id":"9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d","source":"https://gesprekken.example.com/api/v1","type":"nl.vng.gesprekken.gespreksbijdrage.gelezen","subject":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","time":"2026-03-11T10:20:00Z","sequence":"18425","datacontenttype":"application/json","aanleidingzaak":"https://zaken.example.com/api/v1/zaken/def456","data":{"gespreksbijdrage":"https://gesprekken.example.com/api/v1/gespreksbijdragen/550e8400-e29b-41d4-a716-446655440001","gespreksdeelname":"https://gesprekken.example.com/api/v1/gespreksdeelnames/550e8400-e29b-41d4-a716-446655440009","momentGelezen":"2026-03-11T10:20:00Z"}}
+            ```
           content:
             text/event-stream:
               schema:
                 $ref: '#/components/schemas/GesprekEvent'
+
         "400":
           $ref: '#/components/responses/400'
         "401":
@@ -1458,9 +1487,191 @@ components:
     # ───── EVENTS ──────────────────────────────────────────────────────────
 
     GesprekEvent:
+      description: |
+        Eén event op `GET /events`: het JSON-object in het `data`-veld van een
+        SSE-bericht. Welk schema geldt, volgt uit `type`; zie de tabel bij
+        `GET /events` en het voorbeeld van een stroom daar.
+      oneOf:
+        - $ref: '#/components/schemas/GesprekAangemaaktEvent'
+        - $ref: '#/components/schemas/GesprekBeeindigdEvent'
+        - $ref: '#/components/schemas/GesprekVerwijderdEvent'
+        - $ref: '#/components/schemas/GesprekGeredigeerdEvent'
+        - $ref: '#/components/schemas/GespreksbijdrageAangemaaktEvent'
+        - $ref: '#/components/schemas/GespreksbijdrageGelezenEvent'
+        - $ref: '#/components/schemas/GespreksbijdrageGeredigeerdEvent'
+        - $ref: '#/components/schemas/GespreksdeelnameAangemaaktEvent'
+        - $ref: '#/components/schemas/GespreksdeelnameBeeindigdEvent'
+      discriminator:
+        propertyName: type
+        mapping:
+          nl.vng.gesprekken.gesprek.aangemaakt: '#/components/schemas/GesprekAangemaaktEvent'
+          nl.vng.gesprekken.gesprek.beeindigd: '#/components/schemas/GesprekBeeindigdEvent'
+          nl.vng.gesprekken.gesprek.verwijderd: '#/components/schemas/GesprekVerwijderdEvent'
+          nl.vng.gesprekken.gesprek.geredigeerd: '#/components/schemas/GesprekGeredigeerdEvent'
+          nl.vng.gesprekken.gespreksbijdrage.aangemaakt: '#/components/schemas/GespreksbijdrageAangemaaktEvent'
+          nl.vng.gesprekken.gespreksbijdrage.gelezen: '#/components/schemas/GespreksbijdrageGelezenEvent'
+          nl.vng.gesprekken.gespreksbijdrage.geredigeerd: '#/components/schemas/GespreksbijdrageGeredigeerdEvent'
+          nl.vng.gesprekken.gespreksdeelname.aangemaakt: '#/components/schemas/GespreksdeelnameAangemaaktEvent'
+          nl.vng.gesprekken.gespreksdeelname.beeindigd: '#/components/schemas/GespreksdeelnameBeeindigdEvent'
+
+    GesprekAangemaaktEvent:
       description: >
-        Een wijziging als CloudEvent 1.0, geleverd als `data` van een
-        SSE-bericht op `GET /events` (zie `patterns/event-stream`).
+        Een gesprek is aangemaakt. `data` is het gesprek.
+      allOf:
+        - $ref: '#/components/schemas/GesprekEventBasis'
+        - type: object
+          required:
+            - type
+            - data
+          properties:
+            type:
+              type: string
+              enum:
+                - nl.vng.gesprekken.gesprek.aangemaakt
+            data:
+              $ref: '#/components/schemas/Gesprek'
+
+    GesprekBeeindigdEvent:
+      description: >
+        Een gesprek is beëindigd, door een deelnemer of automatisch. `data` is het gesprek, met `contactmoment`.
+      allOf:
+        - $ref: '#/components/schemas/GesprekEventBasis'
+        - type: object
+          required:
+            - type
+            - data
+          properties:
+            type:
+              type: string
+              enum:
+                - nl.vng.gesprekken.gesprek.beeindigd
+            data:
+              $ref: '#/components/schemas/Gesprek'
+
+    GesprekVerwijderdEvent:
+      description: >
+        Een gesprek is vernietigd na de bewaartermijn. `data` is een `Tombstone`.
+      allOf:
+        - $ref: '#/components/schemas/GesprekEventBasis'
+        - type: object
+          required:
+            - type
+            - data
+          properties:
+            type:
+              type: string
+              enum:
+                - nl.vng.gesprekken.gesprek.verwijderd
+            data:
+              $ref: '../../../patterns/event-stream/next.yaml#/schemas/Tombstone'
+
+    GesprekGeredigeerdEvent:
+      description: >
+        Inhoud van een gesprek is uit de historie verwijderd. `data` is een `Redactie`.
+      allOf:
+        - $ref: '#/components/schemas/GesprekEventBasis'
+        - type: object
+          required:
+            - type
+            - data
+          properties:
+            type:
+              type: string
+              enum:
+                - nl.vng.gesprekken.gesprek.geredigeerd
+            data:
+              $ref: '../../../patterns/event-stream/next.yaml#/schemas/Redactie'
+
+    GespreksbijdrageAangemaaktEvent:
+      description: >
+        Een bijdrage is geplaatst. `data` is de bijdrage.
+      allOf:
+        - $ref: '#/components/schemas/GesprekEventBasis'
+        - type: object
+          required:
+            - type
+            - data
+          properties:
+            type:
+              type: string
+              enum:
+                - nl.vng.gesprekken.gespreksbijdrage.aangemaakt
+            data:
+              $ref: '#/components/schemas/Gespreksbijdrage'
+
+    GespreksbijdrageGelezenEvent:
+      description: >
+        Een deelnemer heeft een bijdrage gelezen. `data` is de leesregistratie.
+      allOf:
+        - $ref: '#/components/schemas/GesprekEventBasis'
+        - type: object
+          required:
+            - type
+            - data
+          properties:
+            type:
+              type: string
+              enum:
+                - nl.vng.gesprekken.gespreksbijdrage.gelezen
+            data:
+              $ref: '#/components/schemas/GelezenGespreksbijdrage'
+
+    GespreksbijdrageGeredigeerdEvent:
+      description: >
+        Een bijdrage is geredigeerd (beheer). `data` is een `Redactie`.
+      allOf:
+        - $ref: '#/components/schemas/GesprekEventBasis'
+        - type: object
+          required:
+            - type
+            - data
+          properties:
+            type:
+              type: string
+              enum:
+                - nl.vng.gesprekken.gespreksbijdrage.geredigeerd
+            data:
+              $ref: '../../../patterns/event-stream/next.yaml#/schemas/Redactie'
+
+    GespreksdeelnameAangemaaktEvent:
+      description: >
+        Iemand neemt deel aan een gesprek. `data` is de deelname.
+      allOf:
+        - $ref: '#/components/schemas/GesprekEventBasis'
+        - type: object
+          required:
+            - type
+            - data
+          properties:
+            type:
+              type: string
+              enum:
+                - nl.vng.gesprekken.gespreksdeelname.aangemaakt
+            data:
+              $ref: '#/components/schemas/Gespreksdeelname'
+
+    GespreksdeelnameBeeindigdEvent:
+      description: >
+        Een deelname is beëindigd. `data` is de deelname.
+      allOf:
+        - $ref: '#/components/schemas/GesprekEventBasis'
+        - type: object
+          required:
+            - type
+            - data
+          properties:
+            type:
+              type: string
+              enum:
+                - nl.vng.gesprekken.gespreksdeelname.beeindigd
+            data:
+              $ref: '#/components/schemas/Gespreksdeelname'
+
+    GesprekEventBasis:
+      description: >
+        Gemeenschappelijke velden van elk event op `GET /events`: een
+        CloudEvent 1.0 (zie `patterns/event-stream`). De schema's per type
+        hieronder vullen `type` en `data` in.
       allOf:
         - $ref: '../../../patterns/event-stream/next.yaml#/schemas/EventBasis'
         - type: object
@@ -1493,17 +1704,6 @@ components:
                 zonder extra opvraag aan de zaak koppelen, bijvoorbeeld om de
                 zaakpagina van de MijnOmgeving te verversen.
               example: "https://zaken.example.com/api/v1/zaken/def456"
-            data:
-              description: >
-                De resource na de wijziging. Welk schema van toepassing is,
-                volgt uit `type`.
-              anyOf:
-                - $ref: '#/components/schemas/Gesprek'
-                - $ref: '#/components/schemas/Gespreksbijdrage'
-                - $ref: '#/components/schemas/Gespreksdeelname'
-                - $ref: '#/components/schemas/GelezenGespreksbijdrage'
-                - $ref: '../../../patterns/event-stream/next.yaml#/schemas/Tombstone'
-                - $ref: '../../../patterns/event-stream/next.yaml#/schemas/Redactie'
       example:
         specversion: "1.0"
         id: "7f3c2a10-5b8e-4d21-9a6f-0c1e2d3f4a5b"
