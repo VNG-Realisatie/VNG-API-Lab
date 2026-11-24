@@ -10,6 +10,7 @@ Dit document beschrijft de use-cases, uitgangspunten en integratie-afspraken voo
 
 - API (interactief): [Open MijnGesprekken (Scalar)](/?url=/docs/bundled/apis_rest_gesprekken_next.yaml)
 - OpenAPI bron: [apis/rest/gesprekken/next.yaml](/?file=apis/rest/gesprekken/next.yaml)
+- Versies: [0.2.1](/?file=apis/rest/gesprekken/v0.2.1.yaml) (VNG-standaard), [0.3.0](/?file=apis/rest/gesprekken/v0.3.0.yaml) (model Visma Roxit, Johannes Battjes, 2026-09-30) en `next` = 0.4.0 in ontwikkeling, gebouwd op 0.3.0.
 
 ## Use-cases (voorbeeld)
 
