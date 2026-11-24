@@ -55,9 +55,14 @@ info:
     ZAAK, een THEMA, een PRODUCT/DIENST en een AGENDA-AFSPRAAK. Daar komt
     een PLAN bij. De API heeft voor elk een optioneel veld
     (`aanleidingZaak`, `aanleidingThema`, `aanleidingProductDienst`,
-    `aanleidingAgendaAfspraak`, `aanleidingPlan`). Geen enkele aanleiding is
-    verplicht. De eerste context is de zaak; product en plan volgen, andere
-    objecttypen later. Of een bericht ook een aanleiding kan zijn, is nog
+    `aanleidingAgendaAfspraak`, `aanleidingPlan`). Elk veld afzonderlijk is
+    optioneel, maar een gesprek heeft **minimaal één aanleiding**: de
+    definitie is "een dialoog, met een aanleiding". `POST /gesprekken`
+    zonder aanleiding geeft `400` met code `aanleiding-ontbreekt`. Een zaak
+    is de aanbevolen aanleiding: die geeft de medewerker en de inwoner de
+    meeste context, en routering en autorisatie lopen nu via de zaak. De
+    eerste context is de zaak; product en plan volgen, andere objecttypen
+    later. Of een bericht ook een aanleiding kan zijn, is nog
     open. Routering (`aanleidingzaak` in events) gaat nu alleen over de zaak.
 
     ## Contactmoment
@@ -362,6 +367,10 @@ paths:
         deelnemen.
 
         Vervolgbijdragen worden toegevoegd via `POST /gespreksbijdragen`.
+
+        Een gesprek heeft minimaal één aanleiding (`aanleiding*`), bij
+        voorkeur een zaak. Zonder aanleiding volgt `400` met code
+        `aanleiding-ontbreekt`.
 
         Zowel de gemeente als de klant kan een gesprek starten (CIM:
         "Het gesprek wordt gestart door de gemeente, of de klant van de
@@ -863,7 +872,8 @@ components:
           description: >
             URL-referentie naar de ZAAK (ZGW Zaken API) die aanleiding is
             voor dit gesprek. Een zaak kan aanleiding zijn voor meerdere gesprekken.
-            Optioneel; in de MVP wordt in de praktijk de zaak gebruikt (zie
+            Aanbevolen aanleiding. Optioneel zolang een andere aanleiding is
+            opgegeven; in de MVP wordt in de praktijk de zaak gebruikt (zie
             "Aanleidingen").
           example: "https://zaken.example.com/api/v1/zaken/def456"
         aanleidingThema:
@@ -919,6 +929,15 @@ components:
                 gesprek in dezelfde aanvraag aangemaakt.
             eersteBijdrage:
               $ref: '#/components/schemas/EersteGespreksbijdrageCreate'
+        - description: >
+            Minimaal één aanleiding, met een waarde die niet `null` is (zie
+            "Aanleidingen"). Een zaak is de aanbevolen aanleiding.
+          anyOf:
+            - required: [aanleidingZaak]
+            - required: [aanleidingThema]
+            - required: [aanleidingProductDienst]
+            - required: [aanleidingAgendaAfspraak]
+            - required: [aanleidingPlan]
       required:
         - gespreksonderwerp
 
