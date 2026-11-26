@@ -12,6 +12,7 @@ Per MijnService zijn er meerdere profielen: één per soort bron. Ze testen deze
 |---|---|---|
 | MijnZaken | [`mijnzaken/mijnzaken-next.arazzo.yaml`](mijnzaken/mijnzaken-next.arazzo.yaml) | Bron die de MijnZaken API (`apis/rest/zaken/next.yaml`) aanbiedt |
 | MijnZaken | [`mijnzaken/zgw.arazzo.yaml`](mijnzaken/zgw.arazzo.yaml) | Zaaksysteem met de ZGW Zaken API (1.5.1, gemma-zaken `current_version`) |
+| MijnZaken en backoffice | [`zgw/zaken.arazzo.yaml`](zgw/zaken.arazzo.yaml) | Consumerprofiel (beschrijvend, nog geen doel): calls van MijnZaken en een backoffice op Zaken 1.8, Catalogi 1.4 en Documenten 1.6. Opgesteld door Paul Jansen |
 | MijnTaken | [`mijntaken/mijntaken-next.arazzo.yaml`](mijntaken/mijntaken-next.arazzo.yaml) | Provider die de MijnTaken API (`apis/rest/taken/next.yaml`) aanbiedt |
 | MijnTaken | [`mijntaken/openvtb.arazzo.yaml`](mijntaken/openvtb.arazzo.yaml) | Takenregister met de Open VTB Taken API (0.2.0, `apis/rest/openvtb-taken/v0.2.0.yaml`) |
 | MijnTaken | [`mijntaken/objecten.arazzo.yaml`](mijntaken/objecten.arazzo.yaml) | Objecten API (Open Object 2.8, `apis/rest/openobject-objecten/v2.8.0.yaml`) met taken als objecten, zoals Open Inwoner en GZAC ze gebruiken |
@@ -42,6 +43,30 @@ taken, plus `taken-bij-zaak`: de URN van een zaak uit MijnZaken is het filter vo
 | `burger-a-haalt-zaak-van-burger-b` | Token van A + uuid van B's zaak geeft 403 (next) of 403/404 (ZGW) |
 | `overzicht-bevat-alleen-eigen-zaken` (next) | Het overzicht van A bevat de zaak van B niet |
 | `burger-a-zoekt-op-bsn-van-burger-b` (ZGW) | Token van A + BSN van B geeft niets terug |
+
+## Consumerprofiel ZGW Zaken 1.8
+
+[`zgw/zaken.arazzo.yaml`](zgw/zaken.arazzo.yaml), opgesteld door Paul Jansen, beschrijft de
+andere kant: welke calls MijnZaken en een backoffice applicatie doen op de Zaken API 1.8, de
+Catalogi API 1.4 en de Documenten API 1.6. Het heeft 17 workflows voor aanmaken, ophalen,
+bijwerken, afsluiten, heropenen en vernietigen. `x-consumer` zegt per workflow welke
+applicatie hem uitvoert. De profielen hierboven testen of een bron goed reageert; dit profiel
+legt vast hoe een consumer de ZGW API's gebruikt. De negatieve burgertests staan in
+`mijnzaken/zgw.arazzo.yaml` en zitten hier dus niet in.
+
+Er is nog geen doel in `doelen.yaml`: de schrijfflows hebben een echte catalogus, een JWT met
+de juiste scopes en wegwerpdata nodig. De volgende stap is een doel tegen Open Zaak in
+DemoStack. Tot die tijd controleert `pnpm lint:aansluitprofielen` het bestand.
+
+Een paar dingen die Respect 2.57 niet ondersteunt, en die dit profiel daarom vermijdt:
+
+- `{$inputs.x}` binnen een JSONPath-criterium of -selector wordt niet ingevuld.
+- Selector-objecten (`context`/`selector`/`type`) in outputs worden niet geëvalueerd.
+- Een output die naar een genest object wijst, faalt. Teksten, lijsten en de hele body werken.
+- Een input met `format` (uri, uuid, date) laat Respect zonder melding stoppen.
+- Object-inputs (zoals `initiator` of `wijzigingen`) werken alleen als je alle inputs als één
+  JSON-object meegeeft: `--input '{"jwt":"...","initiator":{...}}'`. Met `--input naam=waarde`
+  worden ze een string.
 
 ## Draaien
 

@@ -1,0 +1,1102 @@
+arazzo: 1.0.1
+info:
+  title: Zaken - aanmaken, ophalen, bijwerken en verwijderen (MijnZaken en backoffice applicatie)
+  version: 1.0.0
+  summary: Generieke API-flows van MijnZaken (VNG Omnichannel) en de backoffice applicatie op de Zaken API 1.8 en de Catalogi API 1.4.
+  description: |
+    Opgesteld door Paul Jansen.
+
+    Deze Arazzo-beschrijving legt de volgorde van API-aanroepen vast die twee ZGW-consumers
+    uitvoeren op de Zaken API (ZRC), de Catalogi API (ZTC) en de Documenten API (DRC):
+
+    - MijnZaken kan zaken alleen opvragen en bekijken (scope zaken.lezen, documenten.lezen).
+    - De backoffice applicatie maakt zaken aan, vraagt ze op, wijzigt en verwijdert ze.
+
+    Elke workflow noemt in de extensie `x-consumer` welke applicatie hem uitvoert.
+
+    Uitgangspunten:
+    - Leesacties gebruiken `expand`, zodat gerelateerde resources in één aanroep meekomen
+      (zrc-026). Expand werkt alleen op GET-operaties. Na een schrijfactie volgt daarom een
+      aparte GET.
+    - Arazzo beschrijft alleen de aanroepen van de consumer. Wat de Zaken API zelf doet, zoals
+      valideren tegen de Catalogi API, relaties spiegelen in de Documenten API en notificaties
+      versturen, staat in de `description` van de betreffende stap.
+    - Arazzo kent geen lussen. Handelingen die per item herhaald worden (zaakeigenschappen,
+      zaakobjecten, documenten, vernietigen per zaak) zijn aparte workflows die de consumer per
+      item aanroept. `dependsOn` geeft aan welke workflow eerst moet zijn uitgevoerd.
+    - De JWT bevat de scopes die per workflow genoemd worden. De Zaken API autoriseert de
+      applicatie op zaaktype en vertrouwelijkheid (zrc-006), niet de individuele burger.
+
+    Uitvoerbaar met Redocly Respect (zie `aansluitprofielen/README.md`). Daarom gebruikt dit
+    profiel alleen JSON Pointers en filters van de API zelf om een URL te kiezen, en geen
+    JSONPath-filters met waarden uit inputs: Respect vult `{$inputs.x}` niet in binnen een
+    JSONPath-expressie en evalueert selector-objecten in outputs niet. Waar de consumer een
+    keuze maakt uit een lijst (statustype, resultaattype), krijgt de workflow de URL als input.
+    Die URL's staan in de outputs van `zaak-aanmaken`. Outputs zijn een tekst of een lijst, geen
+    los object uit de response: Respect 2.57 kan een JSON Pointer naar een genest object niet als
+    output gebruiken. De inputs hebben om dezelfde reden geen `format` (uri, uuid, date): Respect
+    stopt dan zonder melding.
+
+    Dit profiel beschrijft de consumer. De negatieve burgertests (zonder token, onbekende zaak,
+    burger A en burger B) staan in `aansluitprofielen/mijnzaken/zgw.arazzo.yaml`.
+
+    Bronnen: https://vng-realisatie.github.io/gemma-zaken/standaard/zaken/
+    en https://vng-realisatie.github.io/gemma-zaken/standaard/catalogi/
+
+sourceDescriptions:
+  - name: zakenApi
+    url: https://raw.githubusercontent.com/VNG-Realisatie/gemma-zaken/master/docs/standaard/zaken/zrc/1.8.x/1.8.0/openapi.yaml
+    type: openapi
+  - name: catalogiApi
+    url: https://raw.githubusercontent.com/VNG-Realisatie/gemma-zaken/master/docs/standaard/catalogi/ztc/1.4.x/1.4.0/openapi.yaml
+    type: openapi
+  - name: documentenApi
+    url: https://raw.githubusercontent.com/VNG-Realisatie/gemma-zaken/master/docs/standaard/documenten/drc/1.6.x/1.6.0/openapi.yaml
+    type: openapi
+
+workflows:
+
+  # ------------------------------------------------------------------
+  # AANMAKEN
+  # ------------------------------------------------------------------
+
+  - workflowId: zaaknummer-reserveren
+    x-consumer: backoffice
+    summary: Reserveer vooraf een zaaknummer (optioneel, sinds Zaken API 1.7).
+    description: |
+      Een gereserveerd zaaknummer wordt nooit meer automatisch uitgegeven. Geef het als input
+      `identificatie` mee aan de workflow `zaak-aanmaken`. De response is een lijst van
+      gereserveerde nummers, ook bij `aantal: 1`. Scope: zaken.aanmaken.
+    inputs:
+      type: object
+      required: [jwt, bronorganisatie]
+      properties:
+        jwt:
+          type: string
+        bronorganisatie:
+          type: string
+          description: RSIN van de bronorganisatie (9 cijfers).
+    steps:
+      - stepId: reserveren
+        operationId: $sourceDescriptions.zakenApi.zaaknummer_reserveren
+        parameters:
+          - reference: $components.parameters.authorization
+        requestBody:
+          contentType: application/json
+          payload:
+            bronorganisatie: $inputs.bronorganisatie
+            aantal: 1
+        successCriteria:
+          - condition: $statusCode == 201
+        onFailure:
+          - reference: $components.failureActions.validatiefout
+          - reference: $components.failureActions.geenAutorisatie
+        outputs:
+          zaaknummer: $response.body#/0/zaaknummer
+    outputs:
+      zaaknummer: $steps.reserveren.outputs.zaaknummer
+
+  - workflowId: zaak-aanmaken
+    x-consumer: backoffice
+    summary: Bepaal het zaaktype, registreer de zaak met initiële status en initiator, en haal het resultaat op.
+    description: |
+      Scopes: catalogi.lezen, zaken.aanmaken, zaken.bijwerken (nodig voor POST /rollen), zaken.lezen.
+      Zaakeigenschappen, zaakobjecten en documenten voegt de consumer daarna per item toe met de
+      workflows `zaakeigenschap-toevoegen`, `zaakobject-toevoegen` en `document-toevoegen`.
+      De outputs `statustypen` en `resultaattypen` leveren de URL's voor `status-wijzigen`,
+      `zaak-afsluiten` en `zaak-heropenen`.
+    inputs:
+      type: object
+      required: [jwt, catalogus, zaaktypeIdentificatie, peildatum, bronorganisatie, verantwoordelijkeOrganisatie, startdatum, datumStatusGezet, initiator]
+      properties:
+        jwt:
+          type: string
+        catalogus:
+          type: string
+          description: URL van de catalogus in de Catalogi API.
+        zaaktypeIdentificatie:
+          type: string
+        peildatum:
+          type: string
+          description: Datum waarop het zaaktype geldig moet zijn, normaal gelijk aan de startdatum.
+        bronorganisatie:
+          type: string
+        verantwoordelijkeOrganisatie:
+          type: string
+        identificatie:
+          type: string
+          default: ''
+          description: Gereserveerd zaaknummer uit `zaaknummer-reserveren`. Leeg laten om de Zaken API een nummer te laten genereren (zrc-002).
+        omschrijving:
+          type: string
+        startdatum:
+          type: string
+        datumStatusGezet:
+          type: string
+        initiator:
+          type: object
+          required: [betrokkeneType, roltoelichting, betrokkeneIdentificatie]
+          properties:
+            betrokkeneType:
+              type: string
+              enum: [natuurlijk_persoon, niet_natuurlijk_persoon, vestiging, organisatorische_eenheid, medewerker]
+            roltoelichting:
+              type: string
+            betrokkeneIdentificatie:
+              type: object
+              description: 'Bijvoorbeeld `{"inpBsn":"999993653"}` bij een natuurlijk persoon.'
+    steps:
+      - stepId: zaaktype-bepalen
+        description: |
+          Eén aanroep op de Catalogi API levert het gepubliceerde zaaktype dat geldig is op de
+          peildatum, met via expand de statustypen, roltypen, eigenschappen, zaakobjecttypen,
+          informatieobjecttypen en resultaattypen. Alleen zaaktypen met concept=false mogen
+          gebruikt worden. De statustypen komen in volgorde van volgnummer terug, dus het eerste
+          is het initiële statustype.
+        operationId: $sourceDescriptions.catalogiApi.zaaktype_list
+        parameters:
+          - reference: $components.parameters.authorization
+          - name: catalogus
+            in: query
+            value: $inputs.catalogus
+          - name: identificatie
+            in: query
+            value: $inputs.zaaktypeIdentificatie
+          - name: status
+            in: query
+            value: definitief
+          - name: datumGeldigheid
+            in: query
+            value: $inputs.peildatum
+          - name: expand
+            in: query
+            value: statustypen,eigenschappen,zaakobjecttypen,informatieobjecttypen,resultaattypen
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/count > 0
+        onFailure:
+          - name: geen-geldig-zaaktype
+            type: end
+        outputs:
+          zaaktype: $response.body#/results/0/url
+          initieelStatustype: $response.body#/results/0/_expand/statustypen/0/url
+          statustypen: $response.body#/results/0/_expand/statustypen
+          resultaattypen: $response.body#/results/0/_expand/resultaattypen
+          eigenschappen: $response.body#/results/0/_expand/eigenschappen
+          zaakobjecttypen: $response.body#/results/0/_expand/zaakobjecttypen
+          informatieobjecttypen: $response.body#/results/0/_expand/informatieobjecttypen
+
+      - stepId: initiator-roltype-bepalen
+        description: |
+          Het roltype met omschrijvingGeneriek initiator. Een filter op de Catalogi API in plaats
+          van een keuze uit de expand, zodat de URL met een JSON Pointer te pakken is.
+        operationId: $sourceDescriptions.catalogiApi.roltype_list
+        parameters:
+          - reference: $components.parameters.authorization
+          - name: zaaktype
+            in: query
+            value: $steps.zaaktype-bepalen.outputs.zaaktype
+          - name: omschrijvingGeneriek
+            in: query
+            value: initiator
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/count > 0
+        onFailure:
+          - name: geen-initiator-roltype
+            type: end
+        outputs:
+          initiatorRoltype: $response.body#/results/0/url
+
+      - stepId: zaak-registreren
+        description: |
+          De Zaken API controleert de autorisatie op zaaktype (zrc-006), haalt het zaaktype zelf op
+          bij de Catalogi API en valideert het (zrc-001), toetst producten of diensten (zrc-015),
+          bewaakt de uniciteit van de identificatie of genereert die (zrc-002) en leidt zo nodig de
+          vertrouwelijkheidaanduiding af (zrc-009). Daarna verstuurt de Zaken API een notificatie op
+          kanaal zaken (resource zaak, actie create).
+        operationId: $sourceDescriptions.zakenApi.zaak_create
+        parameters:
+          - reference: $components.parameters.authorization
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+        requestBody:
+          contentType: application/json
+          payload:
+            identificatie: $inputs.identificatie
+            bronorganisatie: $inputs.bronorganisatie
+            verantwoordelijkeOrganisatie: $inputs.verantwoordelijkeOrganisatie
+            zaaktype: $steps.zaaktype-bepalen.outputs.zaaktype
+            omschrijving: $inputs.omschrijving
+            startdatum: $inputs.startdatum
+        successCriteria:
+          - condition: $statusCode == 201
+        onFailure:
+          - reference: $components.failureActions.validatiefout
+          - reference: $components.failureActions.geenAutorisatie
+        outputs:
+          zaak: $response.body#/url
+          zaakUuid: $response.body#/uuid
+          identificatie: $response.body#/identificatie
+
+      - stepId: initiele-status-zetten
+        description: De Zaken API controleert dat het statustype bij het zaaktype hoort (zrc-016). Notificatie op kanaal zaken (resource status, actie create).
+        operationId: $sourceDescriptions.zakenApi.status_create
+        parameters:
+          - reference: $components.parameters.authorization
+        requestBody:
+          contentType: application/json
+          payload:
+            zaak: $steps.zaak-registreren.outputs.zaak
+            statustype: $steps.zaaktype-bepalen.outputs.initieelStatustype
+            datumStatusGezet: $inputs.datumStatusGezet
+        successCriteria:
+          - condition: $statusCode == 201
+        onFailure:
+          - reference: $components.failureActions.validatiefout
+        outputs:
+          status: $response.body#/url
+
+      - stepId: initiator-vastleggen
+        description: De Zaken API controleert dat het roltype bij het zaaktype hoort (zrc-019). Vereist zaken.bijwerken. Notificatie (resource rol, actie create).
+        operationId: $sourceDescriptions.zakenApi.rol_create
+        parameters:
+          - reference: $components.parameters.authorization
+        requestBody:
+          contentType: application/json
+          payload:
+            zaak: $steps.zaak-registreren.outputs.zaak
+            roltype: $steps.initiator-roltype-bepalen.outputs.initiatorRoltype
+            betrokkeneType: $inputs.initiator.betrokkeneType
+            roltoelichting: $inputs.initiator.roltoelichting
+            betrokkeneIdentificatie: $inputs.initiator.betrokkeneIdentificatie
+        successCriteria:
+          - condition: $statusCode == 201
+        onFailure:
+          - reference: $components.failureActions.validatiefout
+          - reference: $components.failureActions.geenAutorisatie
+        outputs:
+          rol: $response.body#/url
+
+      - stepId: registratie-ophalen
+        description: Eén GET met expand levert de volledige registratie voor de bevestiging aan de burger.
+        operationId: $sourceDescriptions.zakenApi.zaak_retrieve
+        parameters:
+          - reference: $components.parameters.authorization
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+          - name: uuid
+            in: path
+            value: $steps.zaak-registreren.outputs.zaakUuid
+          - name: expand
+            in: query
+            value: zaaktype,status.statustype,rollen
+        successCriteria:
+          - condition: $statusCode == 200
+        outputs:
+          zaakMetExpand: $response.body
+
+    outputs:
+      zaak: $steps.zaak-registreren.outputs.zaak
+      zaakUuid: $steps.zaak-registreren.outputs.zaakUuid
+      identificatie: $steps.zaak-registreren.outputs.identificatie
+      zaaktype: $steps.zaaktype-bepalen.outputs.zaaktype
+      statustypen: $steps.zaaktype-bepalen.outputs.statustypen
+      resultaattypen: $steps.zaaktype-bepalen.outputs.resultaattypen
+      eigenschappen: $steps.zaaktype-bepalen.outputs.eigenschappen
+      zaakobjecttypen: $steps.zaaktype-bepalen.outputs.zaakobjecttypen
+      informatieobjecttypen: $steps.zaaktype-bepalen.outputs.informatieobjecttypen
+      zaakMetExpand: $steps.registratie-ophalen.outputs.zaakMetExpand
+
+  - workflowId: zaakeigenschap-toevoegen
+    x-consumer: backoffice
+    summary: Voeg één zaakeigenschap toe. Per eigenschap aanroepen.
+    description: |
+      De eigenschap-URL komt uit de output `eigenschappen` van `zaak-aanmaken`. De Zaken API
+      controleert dat de eigenschap bij het zaaktype hoort (zrc-018) en geeft sinds 1.7 een
+      waarschuwing als de waarde niet aan de specificatie voldoet. Scope: zaken.bijwerken.
+    dependsOn: [zaak-aanmaken]
+    inputs:
+      type: object
+      required: [jwt, zaak, zaakUuid, eigenschap, waarde]
+      properties:
+        jwt: {type: string}
+        zaak: {type: string}
+        zaakUuid: {type: string}
+        eigenschap: {type: string}
+        waarde: {type: string}
+    steps:
+      - stepId: zaakeigenschap-registreren
+        operationId: $sourceDescriptions.zakenApi.zaakeigenschap_create
+        parameters:
+          - reference: $components.parameters.authorization
+          - name: zaak_uuid
+            in: path
+            value: $inputs.zaakUuid
+        requestBody:
+          contentType: application/json
+          payload:
+            zaak: $inputs.zaak
+            eigenschap: $inputs.eigenschap
+            waarde: $inputs.waarde
+        successCriteria:
+          - condition: $statusCode == 201
+        onFailure:
+          - reference: $components.failureActions.validatiefout
+        outputs:
+          zaakeigenschap: $response.body#/url
+
+  - workflowId: zaakobject-toevoegen
+    x-consumer: backoffice
+    summary: Koppel één object aan de zaak. Per object aanroepen.
+    description: Scope zaken.aanmaken of zaken.bijwerken. Notificatie (resource zaakobject, actie create).
+    dependsOn: [zaak-aanmaken]
+    inputs:
+      type: object
+      required: [jwt, zaak, objectType]
+      properties:
+        jwt: {type: string}
+        zaak: {type: string}
+        objectType: {type: string, description: 'Bijvoorbeeld adres, pand of overige.'}
+        object: {type: string, description: URL van het object in de bronregistratie.}
+        zaakobjecttype: {type: string, description: Uit de output zaakobjecttypen van zaak-aanmaken.}
+        relatieomschrijving: {type: string}
+    steps:
+      - stepId: zaakobject-registreren
+        operationId: $sourceDescriptions.zakenApi.zaakobject_create
+        parameters:
+          - reference: $components.parameters.authorization
+        requestBody:
+          contentType: application/json
+          payload:
+            zaak: $inputs.zaak
+            objectType: $inputs.objectType
+            object: $inputs.object
+            zaakobjecttype: $inputs.zaakobjecttype
+            relatieomschrijving: $inputs.relatieomschrijving
+        successCriteria:
+          - condition: $statusCode == 201
+        onFailure:
+          - reference: $components.failureActions.validatiefout
+        outputs:
+          zaakobject: $response.body#/url
+
+  - workflowId: document-toevoegen
+    x-consumer: backoffice
+    summary: Registreer één document in de Documenten API en koppel het aan de zaak. Per document aanroepen.
+    description: |
+      Scopes: documenten.aanmaken, zaken.aanmaken of zaken.bijwerken. Het informatieobjecttype
+      komt uit de output `informatieobjecttypen` van `zaak-aanmaken`.
+    dependsOn: [zaak-aanmaken]
+    inputs:
+      type: object
+      required: [jwt, zaak, bronorganisatie, informatieobjecttype, titel, auteur, creatiedatum, bestandsnaam, inhoud]
+      properties:
+        jwt: {type: string}
+        zaak: {type: string}
+        bronorganisatie: {type: string}
+        informatieobjecttype: {type: string}
+        titel: {type: string}
+        auteur: {type: string}
+        creatiedatum: {type: string}
+        bestandsnaam: {type: string}
+        formaat: {type: string, description: MIME-type van het bestand.}
+        inhoud: {type: string, contentEncoding: base64}
+        indicatieGebruiksrecht:
+          type: boolean
+          default: false
+          description: Moet gevuld zijn voordat de zaak afgesloten kan worden (zrc-007).
+    steps:
+      - stepId: document-registreren
+        operationId: $sourceDescriptions.documentenApi.enkelvoudiginformatieobject_create
+        parameters:
+          - reference: $components.parameters.authorization
+        requestBody:
+          contentType: application/json
+          payload:
+            bronorganisatie: $inputs.bronorganisatie
+            creatiedatum: $inputs.creatiedatum
+            titel: $inputs.titel
+            auteur: $inputs.auteur
+            taal: dut
+            bestandsnaam: $inputs.bestandsnaam
+            formaat: $inputs.formaat
+            inhoud: $inputs.inhoud
+            informatieobjecttype: $inputs.informatieobjecttype
+            indicatieGebruiksrecht: $inputs.indicatieGebruiksrecht
+        successCriteria:
+          - condition: $statusCode == 201
+        onFailure:
+          - reference: $components.failureActions.validatiefout
+        outputs:
+          informatieobject: $response.body#/url
+
+      - stepId: document-koppelen
+        description: |
+          De Zaken API haalt het informatieobject op in de Documenten API (zrc-003), controleert dat
+          het informatieobjecttype bij het zaaktype hoort (zrc-017), zet aardRelatie op hoort_bij en
+          de registratiedatum (zrc-004) en maakt zelf het objectinformatieobject aan in de
+          Documenten API (zrc-005). Notificatie (resource zaakinformatieobject, actie create).
+        operationId: $sourceDescriptions.zakenApi.zaakinformatieobject_create
+        parameters:
+          - reference: $components.parameters.authorization
+        requestBody:
+          contentType: application/json
+          payload:
+            zaak: $inputs.zaak
+            informatieobject: $steps.document-registreren.outputs.informatieobject
+            titel: $inputs.titel
+        successCriteria:
+          - condition: $statusCode == 201
+        onFailure:
+          - reference: $components.failureActions.validatiefout
+        outputs:
+          zaakinformatieobject: $response.body#/url
+    outputs:
+      informatieobject: $steps.document-registreren.outputs.informatieobject
+      zaakinformatieobject: $steps.document-koppelen.outputs.zaakinformatieobject
+
+  # ------------------------------------------------------------------
+  # OPHALEN
+  # ------------------------------------------------------------------
+
+  - workflowId: zakenoverzicht-ophalen
+    x-consumer: mijnzaken
+    summary: Haal de zaken van de ingelogde burger op, met zaaktype en actuele status via expand.
+    description: |
+      Scope: zaken.lezen. De Zaken API levert alleen zaken van geautoriseerde zaaktypen tot de
+      maximale vertrouwelijkheidaanduiding (zrc-006). Het filter op BSN legt MijnZaken zelf op, met het BSN uit de DigiD-sessie.
+      De Zaken API haalt zaaktype en statustype zelf op bij de Catalogi API. Een ongeldig
+      expand-attribuut geeft 404 (zrc-027, zrc-028). Voor de volgende pagina roept de consumer
+      de workflow opnieuw aan met de input `page`.
+    inputs:
+      type: object
+      required: [jwt, bsn]
+      properties:
+        jwt: {type: string}
+        bsn: {type: string, description: BSN van de ingelogde burger (uit DigiD).}
+        page: {type: integer, default: 1}
+    steps:
+      - stepId: zaken-ophalen
+        operationId: $sourceDescriptions.zakenApi.zaak_list
+        parameters:
+          - reference: $components.parameters.authorization
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+          - name: rol__betrokkeneIdentificatie__natuurlijkPersoon__inpBsn
+            in: query
+            value: $inputs.bsn
+          - name: rol__omschrijvingGeneriek
+            in: query
+            value: initiator
+          - name: ordering
+            in: query
+            value: -startdatum
+          - name: expand
+            in: query
+            value: zaaktype,status.statustype
+          - name: page
+            in: query
+            value: $inputs.page
+        successCriteria:
+          - condition: $statusCode == 200
+        onFailure:
+          - name: ongeldige-expand
+            type: end
+            criteria:
+              - condition: $statusCode == 404
+        outputs:
+          aantal: $response.body#/count
+          volgendePagina: $response.body#/next
+          zaken: $response.body#/results
+    outputs:
+      aantal: $steps.zaken-ophalen.outputs.aantal
+      volgendePagina: $steps.zaken-ophalen.outputs.volgendePagina
+      zaken: $steps.zaken-ophalen.outputs.zaken
+
+  - workflowId: zaken-zoeken
+    x-consumer: mijnzaken
+    summary: Zoek zaken met een beperkte set velden via POST /zaken/_zoek.
+    description: |
+      Alternatief voor grote lijsten. `fields` bepaalt welke (geneste) velden terugkomen
+      (zrc-029) en is niet te combineren met `expand`. Scope: zaken.lezen.
+    inputs:
+      type: object
+      required: [jwt, bsn]
+      properties:
+        jwt: {type: string}
+        bsn: {type: string}
+    steps:
+      - stepId: zoeken
+        operationId: $sourceDescriptions.zakenApi.zaak__zoek
+        parameters:
+          - reference: $components.parameters.authorization
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+        requestBody:
+          contentType: application/json
+          payload:
+            rol__betrokkeneIdentificatie__natuurlijkPersoon__inpBsn: $inputs.bsn
+            rol__omschrijvingGeneriek: initiator
+            ordering: -startdatum
+            fields:
+              - url
+              - identificatie
+              - startdatum
+              - zaaktype: [omschrijving]
+                status: [datumStatusGezet, statustype]
+        successCriteria:
+          - condition: $statusCode == 200
+        outputs:
+          zaken: $response.body#/results
+    outputs:
+      zaken: $steps.zoeken.outputs.zaken
+
+  - workflowId: zaakdetail-ophalen
+    x-consumer: mijnzaken
+    summary: Haal één zaak op met status, voortgang, resultaat, betrokkenen en documenten via geneste expand.
+    description: |
+      Scope: zaken.lezen. De eerste stap controleert dat de ingelogde burger initiator van deze
+      zaak is, omdat de API alleen de applicatie autoriseert. Daarna haalt de Zaken API met
+      geneste expand (zrc-026) zelf de gegevens op bij de Catalogi API (zaaktype, statustypen,
+      resultaattype, roltypen) en bij de Documenten API (informatieobjecten).
+    inputs:
+      type: object
+      required: [jwt, zaak, zaakUuid, bsn]
+      properties:
+        jwt: {type: string}
+        zaak: {type: string, description: 'URL van de zaak, uit het zakenoverzicht.'}
+        zaakUuid: {type: string}
+        bsn: {type: string}
+    steps:
+      - stepId: burger-is-initiator
+        description: |
+          Filtert de rollen van de zaak op initiator en het BSN van de ingelogde burger. Geen
+          resultaat betekent dat deze burger de zaak niet mag zien.
+        operationId: $sourceDescriptions.zakenApi.rol_list
+        parameters:
+          - reference: $components.parameters.authorization
+          - name: zaak
+            in: query
+            value: $inputs.zaak
+          - name: omschrijvingGeneriek
+            in: query
+            value: initiator
+          - name: betrokkeneIdentificatie__natuurlijkPersoon__inpBsn
+            in: query
+            value: $inputs.bsn
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/count > 0
+        onFailure:
+          - name: niet-gevonden-of-geen-toegang
+            type: end
+      - stepId: zaak-ophalen
+        operationId: $sourceDescriptions.zakenApi.zaak_retrieve
+        parameters:
+          - reference: $components.parameters.authorization
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+          - name: uuid
+            in: path
+            value: $inputs.zaakUuid
+          - name: expand
+            in: query
+            value: zaaktype.statustypen,status.statustype,resultaat.resultaattype,rollen.roltype,eigenschappen,zaakobjecten,zaakinformatieobjecten.informatieobject
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/url == $inputs.zaak
+        onFailure:
+          - name: niet-gevonden-of-geen-toegang
+            type: end
+        outputs:
+          zaak: $response.body
+          voortgang: $response.body#/_expand/zaaktype/_expand/statustypen
+          actueleStatus: $response.body#/_expand/status/_expand/statustype/omschrijving
+          documenten: $response.body#/_expand/zaakinformatieobjecten
+    outputs:
+      zaak: $steps.zaak-ophalen.outputs.zaak
+      voortgang: $steps.zaak-ophalen.outputs.voortgang
+      actueleStatus: $steps.zaak-ophalen.outputs.actueleStatus
+      documenten: $steps.zaak-ophalen.outputs.documenten
+
+  # ------------------------------------------------------------------
+  # BIJWERKEN
+  # ------------------------------------------------------------------
+
+  - workflowId: zaak-bijwerken
+    x-consumer: backoffice
+    summary: Wijzig zaakgegevens van een open zaak met PATCH.
+    description: |
+      Scopes: zaken.lezen, zaken.bijwerken. Een afgesloten zaak (met einddatum) mag alleen gewijzigd
+      worden met zaken.geforceerd-bijwerken (zrc-007). Bij een gewijzigd zaaktype valideert de Zaken
+      API het nieuwe zaaktype opnieuw tegen de Catalogi API (zrc-001, zrc-015). Overige regels:
+      zrc-002, zrc-012, zrc-013, zrc-014. Notificatie (resource zaak, actie partial_update).
+    inputs:
+      type: object
+      required: [jwt, zaakUuid, wijzigingen]
+      properties:
+        jwt: {type: string}
+        zaakUuid: {type: string}
+        wijzigingen:
+          type: object
+          description: Alleen de attributen van de zaak die wijzigen, bijvoorbeeld `{"omschrijving":"..."}`.
+    steps:
+      - stepId: huidige-toestand-ophalen
+        operationId: $sourceDescriptions.zakenApi.zaak_retrieve
+        parameters:
+          - reference: $components.parameters.authorization
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+          - name: uuid
+            in: path
+            value: $inputs.zaakUuid
+          - name: expand
+            in: query
+            value: status.statustype,rollen,eigenschappen
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/einddatum == null
+        onFailure:
+          - name: zaak-is-afgesloten
+            type: end
+      - stepId: zaak-wijzigen
+        operationId: $sourceDescriptions.zakenApi.zaak_partial_update
+        parameters:
+          - reference: $components.parameters.authorization
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+          - name: uuid
+            in: path
+            value: $inputs.zaakUuid
+        requestBody:
+          contentType: application/json
+          payload: $inputs.wijzigingen
+        successCriteria:
+          - condition: $statusCode == 200
+        onFailure:
+          - reference: $components.failureActions.validatiefout
+          - reference: $components.failureActions.geenAutorisatie
+      - stepId: bijgewerkte-zaak-ophalen
+        operationId: $sourceDescriptions.zakenApi.zaak_retrieve
+        parameters:
+          - reference: $components.parameters.authorization
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+          - name: uuid
+            in: path
+            value: $inputs.zaakUuid
+          - name: expand
+            in: query
+            value: zaaktype,status.statustype,rollen,eigenschappen
+        successCriteria:
+          - condition: $statusCode == 200
+        outputs:
+          zaak: $response.body
+    outputs:
+      zaak: $steps.bijgewerkte-zaak-ophalen.outputs.zaak
+
+  - workflowId: status-wijzigen
+    x-consumer: backoffice
+    summary: Zet een nieuwe (niet-eind)status op een open zaak.
+    description: |
+      Een status wordt altijd toegevoegd, nooit overschreven. Het statustype komt uit de output
+      `statustypen` van `zaak-aanmaken` (of uit `expand=zaaktype.statustypen` op de zaak), zodat
+      geen aparte aanroep op de Catalogi API nodig is. Kies een statustype met isEindstatus false;
+      voor een eindstatus gebruik je `zaak-afsluiten`. De Zaken API controleert zrc-016.
+      Scope: zaken.statussen.toevoegen of zaken.aanmaken.
+    inputs:
+      type: object
+      required: [jwt, zaak, zaakUuid, statustype, datumStatusGezet]
+      properties:
+        jwt: {type: string}
+        zaak: {type: string}
+        zaakUuid: {type: string}
+        statustype: {type: string, description: Statustype met isEindstatus false.}
+        datumStatusGezet: {type: string}
+        statustoelichting: {type: string}
+    steps:
+      - stepId: zaak-is-open
+        operationId: $sourceDescriptions.zakenApi.zaak_retrieve
+        parameters:
+          - reference: $components.parameters.authorization
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+          - name: uuid
+            in: path
+            value: $inputs.zaakUuid
+          - name: expand
+            in: query
+            value: status.statustype
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/einddatum == null
+        onFailure:
+          - name: zaak-is-afgesloten
+            type: end
+      - stepId: status-toevoegen
+        operationId: $sourceDescriptions.zakenApi.status_create
+        parameters:
+          - reference: $components.parameters.authorization
+        requestBody:
+          contentType: application/json
+          payload:
+            zaak: $inputs.zaak
+            statustype: $inputs.statustype
+            datumStatusGezet: $inputs.datumStatusGezet
+            statustoelichting: $inputs.statustoelichting
+        successCriteria:
+          - condition: $statusCode == 201
+        onFailure:
+          - reference: $components.failureActions.validatiefout
+          - reference: $components.failureActions.geenAutorisatie
+        outputs:
+          status: $response.body#/url
+    outputs:
+      status: $steps.status-toevoegen.outputs.status
+
+  - workflowId: betrokkene-wijzigen
+    x-consumer: backoffice
+    summary: Vervang een rol met `PUT /rollen/{uuid}` (nieuw in Zaken API 1.8).
+    description: De Zaken API controleert dat het roltype bij het zaaktype hoort (zrc-019). Scope zaken.bijwerken. Notificatie (resource rol, actie update).
+    inputs:
+      type: object
+      required: [jwt, rolUuid, rol]
+      properties:
+        jwt: {type: string}
+        rolUuid: {type: string}
+        rol:
+          type: object
+          description: Volledige rol, met zaak, roltype, betrokkeneType, roltoelichting en betrokkeneIdentificatie.
+    steps:
+      - stepId: rol-vervangen
+        operationId: $sourceDescriptions.zakenApi.rol_update
+        parameters:
+          - reference: $components.parameters.authorization
+          - name: uuid
+            in: path
+            value: $inputs.rolUuid
+        requestBody:
+          contentType: application/json
+          payload: $inputs.rol
+        successCriteria:
+          - condition: $statusCode == 200
+        onFailure:
+          - reference: $components.failureActions.validatiefout
+          - reference: $components.failureActions.geenAutorisatie
+        outputs:
+          rol: $response.body#/url
+
+  - workflowId: zaak-afsluiten
+    x-consumer: backoffice
+    summary: Leg het resultaat vast en zet de eindstatus.
+    description: |
+      Scopes: zaken.lezen, zaken.bijwerken, zaken.statussen.toevoegen.
+      Het eindstatustype (isEindstatus true) en het resultaattype komen uit de outputs
+      `statustypen` en `resultaattypen` van `zaak-aanmaken`. De eerste stap haalt de zaak op met
+      de gekoppelde documenten, zodat de consumer vooraf kan zien welke documenten nog geen
+      indicatieGebruiksrecht hebben. Bij de eindstatus controleert de Zaken API dat er een
+      resultaat is en dat indicatieGebruiksrecht van elk document gevuld is (zrc-007, fout
+      indicatiegebruiksrecht-unset). Daarna zet de API de einddatum en leidt archiefnominatie en
+      archiefactiedatum af uit het resultaattype (zrc-021).
+    inputs:
+      type: object
+      required: [jwt, zaak, zaakUuid, eindstatustype, resultaattype, datumStatusGezet]
+      properties:
+        jwt: {type: string}
+        zaak: {type: string}
+        zaakUuid: {type: string}
+        eindstatustype: {type: string, description: Statustype met isEindstatus true.}
+        resultaattype: {type: string}
+        resultaattoelichting: {type: string}
+        datumStatusGezet: {type: string}
+    steps:
+      - stepId: voorwaarden-ophalen
+        operationId: $sourceDescriptions.zakenApi.zaak_retrieve
+        parameters:
+          - reference: $components.parameters.authorization
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+          - name: uuid
+            in: path
+            value: $inputs.zaakUuid
+          - name: expand
+            in: query
+            value: zaakinformatieobjecten.informatieobject
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/einddatum == null
+        onFailure:
+          - name: zaak-al-afgesloten
+            type: end
+        outputs:
+          documenten: $response.body#/_expand/zaakinformatieobjecten
+      - stepId: resultaat-vastleggen
+        description: De Zaken API controleert dat het resultaattype bij het zaaktype hoort (zrc-020).
+        operationId: $sourceDescriptions.zakenApi.resultaat_create
+        parameters:
+          - reference: $components.parameters.authorization
+        requestBody:
+          contentType: application/json
+          payload:
+            zaak: $inputs.zaak
+            resultaattype: $inputs.resultaattype
+            toelichting: $inputs.resultaattoelichting
+        successCriteria:
+          - condition: $statusCode == 201
+        onFailure:
+          - reference: $components.failureActions.validatiefout
+      - stepId: eindstatus-zetten
+        operationId: $sourceDescriptions.zakenApi.status_create
+        parameters:
+          - reference: $components.parameters.authorization
+        requestBody:
+          contentType: application/json
+          payload:
+            zaak: $inputs.zaak
+            statustype: $inputs.eindstatustype
+            datumStatusGezet: $inputs.datumStatusGezet
+        successCriteria:
+          - condition: $statusCode == 201
+        onFailure:
+          - name: indicatiegebruiksrecht-unset
+            type: end
+            criteria:
+              - condition: $statusCode == 400
+      - stepId: afgesloten-zaak-ophalen
+        operationId: $sourceDescriptions.zakenApi.zaak_retrieve
+        parameters:
+          - reference: $components.parameters.authorization
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+          - name: uuid
+            in: path
+            value: $inputs.zaakUuid
+          - name: expand
+            in: query
+            value: status.statustype,resultaat.resultaattype
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/einddatum != null
+        outputs:
+          einddatum: $response.body#/einddatum
+          archiefnominatie: $response.body#/archiefnominatie
+          archiefactiedatum: $response.body#/archiefactiedatum
+    outputs:
+      einddatum: $steps.afgesloten-zaak-ophalen.outputs.einddatum
+      archiefnominatie: $steps.afgesloten-zaak-ophalen.outputs.archiefnominatie
+      archiefactiedatum: $steps.afgesloten-zaak-ophalen.outputs.archiefactiedatum
+
+  - workflowId: zaak-heropenen
+    x-consumer: backoffice
+    summary: Heropen een afgesloten zaak met een status die geen eindstatus is.
+    description: |
+      Scope: zaken.heropenen (zrc-008). Het statustype (isEindstatus false) komt uit de output
+      `statustypen` van `zaak-aanmaken`. De Zaken API maakt einddatum, archiefactiedatum en
+      archiefnominatie leeg. Notificatie (resource status, actie create).
+    inputs:
+      type: object
+      required: [jwt, zaak, zaakUuid, statustype, datumStatusGezet]
+      properties:
+        jwt: {type: string}
+        zaak: {type: string}
+        zaakUuid: {type: string}
+        statustype: {type: string, description: Statustype met isEindstatus false.}
+        datumStatusGezet: {type: string}
+        statustoelichting: {type: string}
+    steps:
+      - stepId: zaak-is-afgesloten
+        operationId: $sourceDescriptions.zakenApi.zaak_retrieve
+        parameters:
+          - reference: $components.parameters.authorization
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+          - name: uuid
+            in: path
+            value: $inputs.zaakUuid
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/einddatum != null
+        onFailure:
+          - name: zaak-is-niet-afgesloten
+            type: end
+      - stepId: heropenen
+        operationId: $sourceDescriptions.zakenApi.status_create
+        parameters:
+          - reference: $components.parameters.authorization
+        requestBody:
+          contentType: application/json
+          payload:
+            zaak: $inputs.zaak
+            statustype: $inputs.statustype
+            datumStatusGezet: $inputs.datumStatusGezet
+            statustoelichting: $inputs.statustoelichting
+        successCriteria:
+          - condition: $statusCode == 201
+        onFailure:
+          - reference: $components.failureActions.geenAutorisatie
+          - reference: $components.failureActions.validatiefout
+        outputs:
+          status: $response.body#/url
+
+  # ------------------------------------------------------------------
+  # VERWIJDEREN (vernietigen volgens de selectielijst)
+  # ------------------------------------------------------------------
+
+  - workflowId: vernietigingslijst-samenstellen
+    x-consumer: backoffice
+    summary: Bepaal de zaken waarvan de archiefactiedatum verstreken is en die vernietigd moeten worden.
+    description: |
+      Uitgevoerd door de backoffice applicatie, nooit door MijnZaken. Scope:
+      zaken.lezen. Expand levert per zaak het zaaktype, het resultaattype met selectielijstklasse,
+      de deelzaken en de documenten. Na goedkeuring van de lijst roept de consumer per zaak
+      `zaak-vernietigen` aan.
+    inputs:
+      type: object
+      required: [jwt, peildatum]
+      properties:
+        jwt: {type: string}
+        peildatum: {type: string}
+        page: {type: integer, default: 1}
+    steps:
+      - stepId: kandidaten-ophalen
+        operationId: $sourceDescriptions.zakenApi.zaak_list
+        parameters:
+          - reference: $components.parameters.authorization
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+          - name: archiefnominatie
+            in: query
+            value: vernietigen
+          - name: archiefactiedatum__lt
+            in: query
+            value: $inputs.peildatum
+          - name: archiefstatus
+            in: query
+            value: nog_te_archiveren
+          - name: expand
+            in: query
+            value: zaaktype,resultaat.resultaattype,deelzaken,zaakinformatieobjecten.informatieobject
+          - name: page
+            in: query
+            value: $inputs.page
+        successCriteria:
+          - condition: $statusCode == 200
+        outputs:
+          kandidaten: $response.body#/results
+          volgendePagina: $response.body#/next
+    outputs:
+      kandidaten: $steps.kandidaten-ophalen.outputs.kandidaten
+      volgendePagina: $steps.kandidaten-ophalen.outputs.volgendePagina
+
+  - workflowId: zaakinformatieobject-ontkoppelen
+    x-consumer: backoffice
+    summary: Verwijder de relatie tussen een document en een zaak zonder de zaak te vernietigen.
+    description: De Zaken API verwijdert ook het objectinformatieobject in de Documenten API. Scope zaken.bijwerken of zaken.verwijderen.
+    inputs:
+      type: object
+      required: [jwt, zaakinformatieobjectUuid]
+      properties:
+        jwt: {type: string}
+        zaakinformatieobjectUuid: {type: string}
+    steps:
+      - stepId: ontkoppelen
+        operationId: $sourceDescriptions.zakenApi.zaakinformatieobject_destroy
+        parameters:
+          - reference: $components.parameters.authorization
+          - name: uuid
+            in: path
+            value: $inputs.zaakinformatieobjectUuid
+        successCriteria:
+          - condition: $statusCode == 204
+        onFailure:
+          - reference: $components.failureActions.geenAutorisatie
+
+  - workflowId: zaak-vernietigen
+    x-consumer: backoffice
+    summary: Vernietig één zaak met alle gerelateerde gegevens.
+    description: |
+      Scope: zaken.verwijderen (zrc-006). Geen soft-delete (zrc-023): de Zaken API verwijdert ook
+      deelzaken, statussen, resultaat, rollen, zaakobjecten, zaakeigenschappen, kenmerken,
+      zaakinformatieobjecten, zaakverzoeken, zaakcontactmomenten, klantcontacten en de audittrail,
+      en verwijdert waar mogelijk de objectinformatieobjecten in de Documenten API. Notificatie
+      (resource zaak, actie destroy). De documenten zelf verwijdert de consumer daarna met
+      `document-vernietigen`, op basis van de documenten uit de vernietigingslijst.
+    dependsOn: [vernietigingslijst-samenstellen]
+    inputs:
+      type: object
+      required: [jwt, zaakUuid]
+      properties:
+        jwt: {type: string}
+        zaakUuid: {type: string}
+        toelichting: {type: string, description: Wordt als X-Audit-Toelichting meegestuurd.}
+    steps:
+      - stepId: vernietigen
+        operationId: $sourceDescriptions.zakenApi.zaak_destroy
+        parameters:
+          - reference: $components.parameters.authorization
+          - reference: $components.parameters.acceptCrs
+          - reference: $components.parameters.contentCrs
+          - name: uuid
+            in: path
+            value: $inputs.zaakUuid
+          - name: X-Audit-Toelichting
+            in: header
+            value: $inputs.toelichting
+        successCriteria:
+          - condition: $statusCode == 204
+        onFailure:
+          - reference: $components.failureActions.geenAutorisatie
+
+  - workflowId: document-vernietigen
+    x-consumer: backoffice
+    summary: Vernietig een document in de Documenten API dat nergens meer aan gekoppeld is.
+    description: Scope documenten.verwijderen. De Documenten API weigert het verwijderen zolang er nog relaties naar het document bestaan.
+    dependsOn: [zaak-vernietigen]
+    inputs:
+      type: object
+      required: [jwt, informatieobjectUuid]
+      properties:
+        jwt: {type: string}
+        informatieobjectUuid: {type: string}
+    steps:
+      - stepId: vernietigen
+        operationId: $sourceDescriptions.documentenApi.enkelvoudiginformatieobject_destroy
+        parameters:
+          - reference: $components.parameters.authorization
+          - name: uuid
+            in: path
+            value: $inputs.informatieobjectUuid
+        successCriteria:
+          - condition: $statusCode == 204
+        onFailure:
+          - name: nog-gekoppeld
+            type: end
+            criteria:
+              - condition: $statusCode == 400
+
+components:
+  parameters:
+    authorization:
+      name: Authorization
+      in: header
+      value: Bearer {$inputs.jwt}
+    acceptCrs:
+      name: Accept-Crs
+      in: header
+      value: EPSG:4326
+    contentCrs:
+      name: Content-Crs
+      in: header
+      value: EPSG:4326
+  failureActions:
+    validatiefout:
+      name: validatiefout
+      type: end
+      criteria:
+        - condition: $statusCode == 400
+    geenAutorisatie:
+      name: geen-autorisatie
+      type: end
+      criteria:
+        - condition: $statusCode == 403

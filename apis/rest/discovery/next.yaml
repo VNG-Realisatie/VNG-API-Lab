@@ -49,9 +49,9 @@ paths:
                 resources:
                   - service: taken
                     baseUrl: "http://localhost:3000/api/federated"
-                    specUrl: "/docs/bundled/apis_rest_taken_next.yaml"
+                    specUrl: "https://vng-api-lab.netlify.app/docs/bundled/apis_rest_taken_next.yaml"
                     label: "Mijn taken"
                   - service: zaken
                     baseUrl: "http://localhost:4010/apis/rest/zaken/next"
-                    specUrl: "/docs/bundled/apis_rest_zaken_next.yaml"
+                    specUrl: "https://vng-api-lab.netlify.app/docs/bundled/apis_rest_zaken_next.yaml"
                     label: "Zaken (mock)"

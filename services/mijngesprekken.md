@@ -14,7 +14,7 @@ Dit document beschrijft de use-cases, uitgangspunten en integratie-afspraken voo
 ## Use-cases (voorbeeld)
 
 - Gesprekken en bijdragen registreren en raadplegen.
-- (Experimenteel) upload-sessie starten voor een bijlage bij een gesprek.
+- Een document (informatieobjecttype "Gespreksbijlage") uit de Documenten API als bijlage aan een bijdrage hangen.
 
 ## Contract / schema
 
