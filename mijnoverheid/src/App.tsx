@@ -28,6 +28,34 @@ function normalizeApiBase(value: string) {
 }
 
 const API_BASES_STORAGE_KEY = "mijnoverheid-api-bases";
+// Eigen toegangstoken voor de endpoints die je in de API-inspector instelt
+// (bijv. OpenEvents). Zonder token gaat "Bearer dummy-token" mee, voor de mocks.
+const API_TOKEN_STORAGE_KEY = "mijnoverheid-api-token";
+
+function readStoredApiToken(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return localStorage.getItem(API_TOKEN_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+// OpenEvents lokaal: MijnZaken en MijnTaken als leesweergave op het eventregister,
+// ingelogd als inwoner Jan (dev-token). Zie docs/mijnoverheid.md in joepio/openevents.
+const OPENEVENTS_PRESET = {
+  bases: {
+    zaken: "http://localhost:8081/mijn/zaken",
+    taken: "http://localhost:8081/mijn/taken",
+  } as Record<string, string>,
+  token: "dev:https://id.example.nl/jan|rol=inwoner",
+};
+
+// De OpenEvents-basis achter een endpoint als .../mijn/zaken, voor de live stroom.
+function openEventsOrigin(base: string): string | null {
+  const m = base.match(/^(https?:\/\/.+?)\/mijn\/[^/]+$/);
+  return m ? m[1] : null;
+}
 
 // De API's waarvoor je in de inspector een eigen endpoint kunt instellen.
 const apiEndpoints: { key: string; label: string }[] = [
@@ -2580,6 +2608,12 @@ export function App() {
   // Per-API endpoint-overrides: applied (apiBases) + bewerkbare concepten (drafts).
   const [apiBases, setApiBases] = useState<Record<string, string>>(readStoredApiBases);
   const [apiBaseDrafts, setApiBaseDrafts] = useState<Record<string, string>>(readStoredApiBases);
+  const [apiToken, setApiToken] = useState<string>(readStoredApiToken);
+  const [apiTokenDraft, setApiTokenDraft] = useState<string>(readStoredApiToken);
+  const [liveStatus, setLiveStatus] = useState<"uit" | "verbinden" | "live">("uit");
+  // trackedFetch leest token en bases via een ref, zodat hij stabiel blijft.
+  const authRef = useRef({ token: apiToken, bases: apiBases });
+  authRef.current = { token: apiToken, bases: apiBases };
   // Standaard-endpoints ontdekt via GET /.well-known/federated-resources op
   // de huidige default-basis (mocks lokaal, fly.dev in productie). Vervangt
   // de vroeger hardcoded per-API standaardpaden; handmatige overrides
@@ -2616,7 +2650,16 @@ export function App() {
     document.documentElement.dataset.theme = value;
   }
 
-  const trackedFetch = useCallback(async (url: string, options?: RequestInit) => {
+  const trackedFetch = useCallback(async (url: string, init?: RequestInit) => {
+    let options = init;
+    // Het eigen token gaat alleen mee naar de endpoints die je zelf hebt ingesteld.
+    const { token, bases } = authRef.current;
+    if (token && Object.values(bases).some((b) => b && url.startsWith(b))) {
+      options = {
+        ...init,
+        headers: { ...((init?.headers as Record<string, string>) || {}), Authorization: `Bearer ${token}` },
+      };
+    }
     const method = options?.method || "GET";
     const id = Math.random().toString(36).substring(7);
     const shortUrl = formatLogUrl(url, getDefaultApiBase());
@@ -2717,6 +2760,19 @@ export function App() {
     setApiBases(next);
     setApiBaseDrafts(next);
     localStorage.setItem(API_BASES_STORAGE_KEY, JSON.stringify(next));
+    const token = apiTokenDraft.trim();
+    setApiToken(token);
+    try {
+      if (token) localStorage.setItem(API_TOKEN_STORAGE_KEY, token);
+      else localStorage.removeItem(API_TOKEN_STORAGE_KEY);
+    } catch {
+      // Geen opslag: het token geldt dan alleen voor deze sessie.
+    }
+  }
+
+  function applyOpenEventsPreset() {
+    setApiBaseDrafts((prev) => ({ ...prev, ...OPENEVENTS_PRESET.bases }));
+    setApiTokenDraft(OPENEVENTS_PRESET.token);
   }
 
   async function sendCustomRequest() {
@@ -2980,6 +3036,65 @@ export function App() {
     },
     [buildUrl, trackedFetch],
   );
+
+  // Live: wijst MijnZaken of MijnTaken naar OpenEvents, volg dan de eventstroom
+  // en laad opnieuw zodra er iets verandert. Een ticket houdt het token uit de URL.
+  const liveRef = useRef({ loadZaken, loadTaken, loadCaseDetail, lastCaseUuid, page });
+  liveRef.current = { loadZaken, loadTaken, loadCaseDetail, lastCaseUuid, page };
+  useEffect(() => {
+    const origins = new Set(
+      ["zaken", "taken"]
+        .map((k) => openEventsOrigin(apiBases[k] || ""))
+        .filter((o): o is string => !!o),
+    );
+    if (!apiToken || origins.size === 0) {
+      setLiveStatus("uit");
+      return;
+    }
+    let stopped = false;
+    const sources: EventSource[] = [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const l = liveRef.current;
+        l.loadZaken();
+        l.loadTaken();
+        if (l.page === "zaak-detail" && l.lastCaseUuid) l.loadCaseDetail(l.lastCaseUuid);
+      }, 800);
+    };
+    const connect = async (origin: string) => {
+      if (stopped) return;
+      setLiveStatus("verbinden");
+      try {
+        const res = await fetch(`${origin}/events/tickets`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiToken}` },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { ticket } = await res.json();
+        if (stopped) return;
+        const es = new EventSource(`${origin}/events?ticket=${encodeURIComponent(ticket)}`);
+        sources.push(es);
+        es.onopen = () => setLiveStatus("live");
+        es.onmessage = refresh;
+        es.onerror = () => {
+          // Een ticket is eenmalig: sluit en vraag na een pauze een nieuw ticket.
+          es.close();
+          setLiveStatus("verbinden");
+          setTimeout(() => connect(origin), 5000);
+        };
+      } catch {
+        setTimeout(() => connect(origin), 5000);
+      }
+    };
+    origins.forEach((o) => connect(o));
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      sources.forEach((es) => es.close());
+    };
+  }, [apiBases, apiToken]);
 
   const handleCaseClick = (uuid: string) => {
     loadCaseDetail(uuid);
@@ -3419,14 +3534,37 @@ export function App() {
                       </div>
                     ))}
                   </div>
+                  <div className="api-inspector__endpoint">
+                    <span className="api-inspector__endpoint-name">Token</span>
+                    <input
+                      className="api-inspector__input"
+                      type="text"
+                      value={apiTokenDraft}
+                      onChange={(e) => setApiTokenDraft(e.target.value)}
+                      placeholder="dummy-token"
+                      aria-label="Bearer-token voor de eigen endpoints"
+                    />
+                  </div>
                   <div className="api-inspector__row">
                     <button type="button" className="api-inspector__button" onClick={applyApiBases}>
                       Toepassen
                     </button>
+                    <button
+                      type="button"
+                      className="api-inspector__action"
+                      onClick={applyOpenEventsPreset}
+                      title="MijnZaken en MijnTaken via OpenEvents op localhost:8081, als inwoner Jan"
+                    >
+                      OpenEvents (lokaal)
+                    </button>
                   </div>
                   <p className="api-inspector__hint">
                     Laat leeg voor het standaard-endpoint. Een eigen endpoint geldt alleen voor die
-                    API.
+                    API. Het token gaat alleen mee naar de eigen endpoints.
+                    {liveStatus !== "uit" &&
+                      (liveStatus === "live"
+                        ? " Live: de demo ververst bij elk nieuw event."
+                        : " Live: verbinden met de eventstroom…")}
                   </p>
                 </div>
               )}
