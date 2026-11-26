@@ -731,17 +731,29 @@ paths:
 
         **Eventtypes.**
 
-        | `type` | Ontstaat bij | `data` |
+        | `type` | Ontstaat bij | `data` (een JSONCommit, behalve bij `geredigeerd`) |
         |---|---|---|
-        | `nl.vng.gesprekken.gesprek.aangemaakt` | `POST /gesprekken` | `Gesprek` |
-        | `nl.vng.gesprekken.gesprek.beeindigd` | `POST /gesprekken/{uuid}/eindigen`, automatisch sluiten na de termijn | `Gesprek`, met `contactmoment` |
-        | `nl.vng.gesprekken.gesprek.verwijderd` | vernietiging na afloop van de bewaartermijn | `Tombstone` |
+        | `nl.vng.gesprekken.gesprek.aangemaakt` | `POST /gesprekken` | `resourceData`: het `Gesprek` |
+        | `nl.vng.gesprekken.gesprek.beeindigd` | `POST /gesprekken/{uuid}/eindigen`, automatisch sluiten na de termijn | `patch`: `momentEindeGesprek` en `contactmoment` |
+        | `nl.vng.gesprekken.gesprek.verwijderd` | vernietiging na afloop van de bewaartermijn | `deleted: true` |
         | `nl.vng.gesprekken.gesprek.geredigeerd` | inhoud van het gesprek uit de historie verwijderd (beheerhandeling) | `Redactie` |
-        | `nl.vng.gesprekken.gespreksbijdrage.aangemaakt` | `eersteBijdrage` bij `POST /gesprekken`, `POST /gespreksbijdragen` | `Gespreksbijdrage` |
-        | `nl.vng.gesprekken.gespreksdeelname.aangemaakt` | `ontvanger` bij `POST /gesprekken`, `POST /gespreksdeelnames`, `nieuweDeelname` | `Gespreksdeelname` |
-        | `nl.vng.gesprekken.gespreksdeelname.beeindigd` | `POST /gespreksdeelnames/{uuid}/eindigen` | `Gespreksdeelname` |
-        | `nl.vng.gesprekken.gespreksbijdrage.gelezen` | `POST /gespreksbijdragen/{uuid}/gelezen` | `GelezenGespreksbijdrage` |
+        | `nl.vng.gesprekken.gespreksbijdrage.aangemaakt` | `eersteBijdrage` bij `POST /gesprekken`, `POST /gespreksbijdragen` | `resourceData`: de `Gespreksbijdrage` |
+        | `nl.vng.gesprekken.gespreksdeelname.aangemaakt` | `ontvanger` bij `POST /gesprekken`, `POST /gespreksdeelnames`, `nieuweDeelname` | `resourceData`: de `Gespreksdeelname` |
+        | `nl.vng.gesprekken.gespreksdeelname.beeindigd` | `POST /gespreksdeelnames/{uuid}/eindigen` | `patch`: `momentEindeDeelname` |
+        | `nl.vng.gesprekken.gespreksbijdrage.gelezen` | `POST /gespreksbijdragen/{uuid}/gelezen` | `resourceData`: de `GelezenGespreksbijdrage` |
         | `nl.vng.gesprekken.gespreksbijdrage.geredigeerd` | `POST /gespreksbijdragen/{uuid}/redigeren` | `Redactie` |
+
+        **Events zijn commits.** `type` noemt de handeling; `data` is een
+        JSONCommit (`schemas/events`) die zegt wat er aan welke resource
+        veranderde. `resourceId` is de URL van die resource en `schema` de
+        naam van het schema in deze API. Aanmaken levert de volledige
+        resource (`resourceData`), wijzigen een JSON Merge Patch (RFC 7396)
+        met alleen de gewijzigde velden (`patch`), en vernietigen
+        `deleted: true`. Een client die een kopie bijhoudt, past elk event
+        toe op zijn kopie: `resourceData` neemt hij over, `patch` voegt hij
+        samen, `deleted` haalt de resource weg. Dit is hetzelfde formaat als
+        het schrijfpad in `patterns/json-commit`. Alleen `geredigeerd` is
+        geen commit: dat gaat over de eventhistorie, niet over de resource.
 
         Elk type heeft een eigen schema (`GesprekAangemaaktEvent`,
         `GespreksbijdrageAangemaaktEvent`, enzovoort); `GesprekEvent` kiest
@@ -796,22 +808,26 @@ paths:
             `data:` (een `GesprekEvent`, per `type` een eigen schema). Regels
             die met `:` beginnen zijn commentaar (de ping).
 
-            Voorbeeld van een stroom met drie events en een ping:
+            Voorbeeld van een stroom met vier events en een ping:
 
             ```
             id: 18423
             event: nl.vng.gesprekken.gesprek.aangemaakt
-            data: {"specversion":"1.0","id":"0b6e1f2a-3c4d-4e5f-8a9b-0c1d2e3f4a5b","source":"https://gesprekken.example.com/api/v1","type":"nl.vng.gesprekken.gesprek.aangemaakt","subject":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","time":"2026-03-11T10:00:00Z","sequence":"18423","datacontenttype":"application/json","aanleidingzaak":"https://zaken.example.com/api/v1/zaken/def456","data":{"url":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","gespreksonderwerp":"Losliggende stoeptegel","aanvangsmomentGesprek":"2026-03-11T10:00:00Z","aanleidingZaak":"https://zaken.example.com/api/v1/zaken/def456"}}
+            data: {"specversion":"1.0","id":"0b6e1f2a-3c4d-4e5f-8a9b-0c1d2e3f4a5b","source":"https://gesprekken.example.com/api/v1","type":"nl.vng.gesprekken.gesprek.aangemaakt","subject":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","time":"2026-03-11T10:00:00Z","sequence":"18423","datacontenttype":"application/json","aanleidingzaak":"https://zaken.example.com/api/v1/zaken/def456","data":{"resourceId":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","schema":"Gesprek","resourceData":{"url":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","gespreksonderwerp":"Losliggende stoeptegel","aanvangsmomentGesprek":"2026-03-11T10:00:00Z","aanleidingZaak":"https://zaken.example.com/api/v1/zaken/def456"}}}
 
             id: 18424
             event: nl.vng.gesprekken.gespreksbijdrage.aangemaakt
-            data: {"specversion":"1.0","id":"7f3c2a10-5b8e-4d21-9a6f-0c1e2d3f4a5b","source":"https://gesprekken.example.com/api/v1","type":"nl.vng.gesprekken.gespreksbijdrage.aangemaakt","subject":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","time":"2026-03-11T10:05:00Z","sequence":"18424","datacontenttype":"application/json","aanleidingzaak":"https://zaken.example.com/api/v1/zaken/def456","data":{"url":"https://gesprekken.example.com/api/v1/gespreksbijdragen/550e8400-e29b-41d4-a716-446655440001","gesprek":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","verzender":"https://gesprekken.example.com/api/v1/gespreksdeelnames/550e8400-e29b-41d4-a716-446655440000","tekstGespreksBijdrage":"Er ligt een losse stoeptegel voor Dorpsstraat 12.","leveringsmoment":"2026-03-11T10:05:00Z","bijlagen":[]}}
+            data: {"specversion":"1.0","id":"7f3c2a10-5b8e-4d21-9a6f-0c1e2d3f4a5b","source":"https://gesprekken.example.com/api/v1","type":"nl.vng.gesprekken.gespreksbijdrage.aangemaakt","subject":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","time":"2026-03-11T10:05:00Z","sequence":"18424","datacontenttype":"application/json","aanleidingzaak":"https://zaken.example.com/api/v1/zaken/def456","data":{"resourceId":"https://gesprekken.example.com/api/v1/gespreksbijdragen/550e8400-e29b-41d4-a716-446655440001","schema":"Gespreksbijdrage","resourceData":{"url":"https://gesprekken.example.com/api/v1/gespreksbijdragen/550e8400-e29b-41d4-a716-446655440001","gesprek":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","verzender":"https://gesprekken.example.com/api/v1/gespreksdeelnames/550e8400-e29b-41d4-a716-446655440000","tekstGespreksBijdrage":"Er ligt een losse stoeptegel voor Dorpsstraat 12.","leveringsmoment":"2026-03-11T10:05:00Z","bijlagen":[]}}}
 
             : ping
 
             id: 18425
             event: nl.vng.gesprekken.gespreksbijdrage.gelezen
-            data: {"specversion":"1.0","id":"9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d","source":"https://gesprekken.example.com/api/v1","type":"nl.vng.gesprekken.gespreksbijdrage.gelezen","subject":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","time":"2026-03-11T10:20:00Z","sequence":"18425","datacontenttype":"application/json","aanleidingzaak":"https://zaken.example.com/api/v1/zaken/def456","data":{"gespreksbijdrage":"https://gesprekken.example.com/api/v1/gespreksbijdragen/550e8400-e29b-41d4-a716-446655440001","gespreksdeelname":"https://gesprekken.example.com/api/v1/gespreksdeelnames/550e8400-e29b-41d4-a716-446655440009","momentGelezen":"2026-03-11T10:20:00Z"}}
+            data: {"specversion":"1.0","id":"9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d","source":"https://gesprekken.example.com/api/v1","type":"nl.vng.gesprekken.gespreksbijdrage.gelezen","subject":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","time":"2026-03-11T10:20:00Z","sequence":"18425","datacontenttype":"application/json","aanleidingzaak":"https://zaken.example.com/api/v1/zaken/def456","data":{"resourceId":"https://gesprekken.example.com/api/v1/gelezengespreksbijdragen/550e8400-e29b-41d4-a716-446655440003","schema":"GelezenGespreksbijdrage","resourceData":{"gespreksbijdrage":"https://gesprekken.example.com/api/v1/gespreksbijdragen/550e8400-e29b-41d4-a716-446655440001","gespreksdeelname":"https://gesprekken.example.com/api/v1/gespreksdeelnames/550e8400-e29b-41d4-a716-446655440009","momentGelezen":"2026-03-11T10:20:00Z"}}}
+
+            id: 18431
+            event: nl.vng.gesprekken.gesprek.beeindigd
+            data: {"specversion":"1.0","id":"0b7e1c52-6f0e-4d8a-9c1b-2f3e4d5a6b7c","source":"https://gesprekken.example.com/api/v1","type":"nl.vng.gesprekken.gesprek.beeindigd","subject":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","time":"2026-03-11T10:45:00Z","sequence":"18431","datacontenttype":"application/json","aanleidingzaak":"https://zaken.example.com/api/v1/zaken/def456","data":{"resourceId":"https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f","schema":"Gesprek","patch":{"momentEindeGesprek":"2026-03-11T10:45:00Z","contactmoment":"https://klantinteracties.example.com/api/v1/klantcontacten/7c1e2d3f-5b8e-4d21-9a6f-0c1e2d3f4a5b"}}}
             ```
           content:
             text/event-stream:
@@ -1516,7 +1532,7 @@ components:
 
     GesprekAangemaaktEvent:
       description: >
-        Een gesprek is aangemaakt. `data` is het gesprek.
+        Een gesprek is aangemaakt. `data` is een JSONCommit met het gesprek als `resourceData`.
       allOf:
         - $ref: '#/components/schemas/GesprekEventBasis'
         - type: object
@@ -1529,11 +1545,18 @@ components:
               enum:
                 - nl.vng.gesprekken.gesprek.aangemaakt
             data:
-              $ref: '#/components/schemas/Gesprek'
+              allOf:
+                - $ref: '../../../schemas/events/next.json#/$defs/JSONCommit'
+                - type: object
+                  required:
+                    - resourceData
+                  properties:
+                    resourceData:
+                      $ref: '#/components/schemas/Gesprek'
 
     GesprekBeeindigdEvent:
       description: >
-        Een gesprek is beëindigd, door een deelnemer of automatisch. `data` is het gesprek, met `contactmoment`.
+        Een gesprek is beëindigd, door een deelnemer of automatisch. `data` is een JSONCommit met `momentEindeGesprek` en `contactmoment` als `patch`.
       allOf:
         - $ref: '#/components/schemas/GesprekEventBasis'
         - type: object
@@ -1546,11 +1569,29 @@ components:
               enum:
                 - nl.vng.gesprekken.gesprek.beeindigd
             data:
-              $ref: '#/components/schemas/Gesprek'
+              allOf:
+                - $ref: '../../../schemas/events/next.json#/$defs/JSONCommit'
+                - type: object
+                  required:
+                    - patch
+                  properties:
+                    patch:
+                      type: object
+                      description: JSON Merge Patch op het gesprek.
+                      required:
+                        - momentEindeGesprek
+                      properties:
+                        momentEindeGesprek:
+                          type: string
+                          format: date-time
+                        contactmoment:
+                          type: string
+                          format: uri
+                          nullable: true
 
     GesprekVerwijderdEvent:
       description: >
-        Een gesprek is vernietigd na de bewaartermijn. `data` is een `Tombstone`.
+        Een gesprek is vernietigd na de bewaartermijn. `data` is een JSONCommit met `deleted: true`.
       allOf:
         - $ref: '#/components/schemas/GesprekEventBasis'
         - type: object
@@ -1563,7 +1604,11 @@ components:
               enum:
                 - nl.vng.gesprekken.gesprek.verwijderd
             data:
-              $ref: '../../../patterns/event-stream/next.yaml#/schemas/Tombstone'
+              allOf:
+                - $ref: '../../../schemas/events/next.json#/$defs/JSONCommit'
+                - type: object
+                  required:
+                    - deleted
 
     GesprekGeredigeerdEvent:
       description: >
@@ -1584,7 +1629,7 @@ components:
 
     GespreksbijdrageAangemaaktEvent:
       description: >
-        Een bijdrage is geplaatst. `data` is de bijdrage.
+        Een bijdrage is geplaatst. `data` is een JSONCommit met de bijdrage als `resourceData`.
       allOf:
         - $ref: '#/components/schemas/GesprekEventBasis'
         - type: object
@@ -1597,11 +1642,18 @@ components:
               enum:
                 - nl.vng.gesprekken.gespreksbijdrage.aangemaakt
             data:
-              $ref: '#/components/schemas/Gespreksbijdrage'
+              allOf:
+                - $ref: '../../../schemas/events/next.json#/$defs/JSONCommit'
+                - type: object
+                  required:
+                    - resourceData
+                  properties:
+                    resourceData:
+                      $ref: '#/components/schemas/Gespreksbijdrage'
 
     GespreksbijdrageGelezenEvent:
       description: >
-        Een deelnemer heeft een bijdrage gelezen. `data` is de leesregistratie.
+        Een deelnemer heeft een bijdrage gelezen. `data` is een JSONCommit met de leesregistratie als `resourceData`.
       allOf:
         - $ref: '#/components/schemas/GesprekEventBasis'
         - type: object
@@ -1614,7 +1666,14 @@ components:
               enum:
                 - nl.vng.gesprekken.gespreksbijdrage.gelezen
             data:
-              $ref: '#/components/schemas/GelezenGespreksbijdrage'
+              allOf:
+                - $ref: '../../../schemas/events/next.json#/$defs/JSONCommit'
+                - type: object
+                  required:
+                    - resourceData
+                  properties:
+                    resourceData:
+                      $ref: '#/components/schemas/GelezenGespreksbijdrage'
 
     GespreksbijdrageGeredigeerdEvent:
       description: >
@@ -1635,7 +1694,7 @@ components:
 
     GespreksdeelnameAangemaaktEvent:
       description: >
-        Iemand neemt deel aan een gesprek. `data` is de deelname.
+        Iemand neemt deel aan een gesprek. `data` is een JSONCommit met de deelname als `resourceData`.
       allOf:
         - $ref: '#/components/schemas/GesprekEventBasis'
         - type: object
@@ -1648,11 +1707,18 @@ components:
               enum:
                 - nl.vng.gesprekken.gespreksdeelname.aangemaakt
             data:
-              $ref: '#/components/schemas/Gespreksdeelname'
+              allOf:
+                - $ref: '../../../schemas/events/next.json#/$defs/JSONCommit'
+                - type: object
+                  required:
+                    - resourceData
+                  properties:
+                    resourceData:
+                      $ref: '#/components/schemas/Gespreksdeelname'
 
     GespreksdeelnameBeeindigdEvent:
       description: >
-        Een deelname is beëindigd. `data` is de deelname.
+        Een deelname is beëindigd. `data` is een JSONCommit met `momentEindeDeelname` als `patch`.
       allOf:
         - $ref: '#/components/schemas/GesprekEventBasis'
         - type: object
@@ -1665,7 +1731,21 @@ components:
               enum:
                 - nl.vng.gesprekken.gespreksdeelname.beeindigd
             data:
-              $ref: '#/components/schemas/Gespreksdeelname'
+              allOf:
+                - $ref: '../../../schemas/events/next.json#/$defs/JSONCommit'
+                - type: object
+                  required:
+                    - patch
+                  properties:
+                    patch:
+                      type: object
+                      description: JSON Merge Patch op de deelname.
+                      required:
+                        - momentEindeDeelname
+                      properties:
+                        momentEindeDeelname:
+                          type: string
+                          format: date-time
 
     GesprekEventBasis:
       description: >
@@ -1715,14 +1795,17 @@ components:
         datacontenttype: application/json
         aanleidingzaak: "https://zaken.example.com/api/v1/zaken/def456"
         data:
-          uuid: "550e8400-e29b-41d4-a716-446655440001"
-          url: "https://gesprekken.example.com/api/v1/gespreksbijdragen/550e8400-e29b-41d4-a716-446655440001"
-          leveringsmoment: "2026-03-11T10:05:00Z"
-          verzender: "https://gesprekken.example.com/api/v1/gespreksdeelnames/550e8400-e29b-41d4-a716-446655440000"
-          tekstGespreksBijdrage: "Goedemorgen, ik wil graag informatie over de aanvraagprocedure."
-          gesprek: "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
-          isReactieOp: null
-          bijlagen: []
+          resourceId: "https://gesprekken.example.com/api/v1/gespreksbijdragen/550e8400-e29b-41d4-a716-446655440001"
+          schema: Gespreksbijdrage
+          resourceData:
+            uuid: "550e8400-e29b-41d4-a716-446655440001"
+            url: "https://gesprekken.example.com/api/v1/gespreksbijdragen/550e8400-e29b-41d4-a716-446655440001"
+            leveringsmoment: "2026-03-11T10:05:00Z"
+            verzender: "https://gesprekken.example.com/api/v1/gespreksdeelnames/550e8400-e29b-41d4-a716-446655440000"
+            tekstGespreksBijdrage: "Goedemorgen, ik wil graag informatie over de aanvraagprocedure."
+            gesprek: "https://gesprekken.example.com/api/v1/gesprekken/095be615-a8ad-4c33-8e9c-c7612fbf6c9f"
+            isReactieOp: null
+            bijlagen: []
 
     # ───── BIJLAGE ─────────────────────────────────────────────────────────
 

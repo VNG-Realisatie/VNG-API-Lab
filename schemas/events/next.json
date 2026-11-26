@@ -69,7 +69,7 @@
           ]
         },
         "type": {
-          "description": "Soort gebeurtenis. Domeinevents: nl.vng.<api>.<resource>.<actie> (bijvoorbeeld nl.vng.gesprekken.gesprek.aangemaakt). JSONCommits: json.commit (één commit) of json.commit.transaction (een CommitBatch); een getypeerde transactie gebruikt een eigen reverse-DNS-naam met dataschema.",
+          "description": "Soort gebeurtenis: de handeling, in de vorm nl.vng.<api>.<resource>.<actie> (bijvoorbeeld nl.vng.gesprekken.gesprek.beeindigd), met een JSONCommit als data (zie patterns/event-stream). Zonder eigen handeling: json.commit (één commit) of json.commit.transaction (een CommitBatch); een getypeerde transactie gebruikt een eigen reverse-DNS-naam met dataschema.",
           "type": "string"
         },
         "transactionid": {

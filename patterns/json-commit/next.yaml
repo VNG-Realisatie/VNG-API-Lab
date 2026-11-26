@@ -175,13 +175,13 @@ description: |
   `json.commit.transaction`. Reverse-DNS types are reserved for typed
   profiles and for domain events.
 
-  **Commits and domain events.** `json.commit` is the change log: what
-  changed in which resource. A domain event (such as
-  `nl.vng.gesprekken.gesprek.beeindigd` in `patterns/event-stream`) carries
-  meaning: what happened. Both may appear side by side on the same stream. A
-  consumer that keeps a copy follows the commits; a consumer that reacts to
-  what happened follows the domain events. A typed transaction can produce
-  both: its commits, and one domain event with the profile's name.
+  **Commits and domain events.** A domain event names what happened (for
+  example `nl.vng.gesprekken.gesprek.beeindigd`); its `data` is the JSONCommit
+  that says what changed. So a stream carries one format: `type` is the
+  handeling, or the generic `json.commit` when a change has no handeling of
+  its own, and `data` is always a commit. A consumer that keeps a copy
+  applies the commits; a consumer that reacts to what happened looks at
+  `type`. See `patterns/event-stream`.
 
   **Signing.** A signature, where needed (ADR-0004), belongs on the transport
   layer as a JWS over the whole CloudEvent, not in the commit format.

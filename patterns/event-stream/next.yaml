@@ -60,15 +60,26 @@ description: |
   filter werken (het gesprek, niet de losse bijdrage). Zo kan een client
   events groeperen zonder `data` te parsen.
 
+  **Data is een commit.** `type` noemt de handeling (wat er gebeurde);
+  `data` is een JSONCommit uit `schemas/events` (wat er aan welke resource
+  veranderde). `resourceId` is de URL van de resource. Aanmaken levert de
+  volledige resource (`resourceData`), wijzigen een JSON Merge Patch
+  (RFC 7396) met alleen de gewijzigde velden (`patch`), verwijderen
+  `deleted: true`. Een afnemer met een kopie past elk event toe: overnemen,
+  samenvoegen of weghalen. Zo heeft het lab één formaat voor schrijven
+  (`patterns/json-commit`) en lezen. Heeft een wijziging geen eigen
+  handeling, dan is `type` het generieke `json.commit`.
+
   **Verwijderen en redactie.** Twee acties zijn voor elke resource
   gereserveerd, met dezelfde betekenis als in `patterns/sync-feed`:
 
   - `….verwijderd`: de resource bestaat niet meer (bijvoorbeeld na afloop van
-    de bewaartermijn). `data` is een `Tombstone`. Haal de resource uit je
-    kopie en caches.
+    de bewaartermijn). `data` is een JSONCommit met `deleted: true`. Haal de
+    resource uit je kopie en caches.
   - `….geredigeerd`: als verwijderd, plus: eerdere inhoud is uit de
     eventhistorie verwijderd, omdat die er niet had mogen staan. `data` is een
-    `Redactie` met de geredigeerde cursors. Een client die die events eerder
+    `Redactie` met de geredigeerde cursors, geen commit: het gaat over de
+    eventhistorie, niet over de resource. Een client die die events eerder
     ontving, verwijdert de inhoud ook uit zijn eigen opslag en afgeleide
     producten. Dit is het antwoord op het AVG-bezwaar tegen een append-only
     log uit ADR-0002.
@@ -129,9 +140,7 @@ description: |
               type:
                 enum: [nl.vng.mijnapi.zaak.aangemaakt, nl.vng.mijnapi.zaak.verwijderd]
               data:
-                anyOf:
-                  - $ref: "#/components/schemas/Zaak"
-                  - $ref: "../../patterns/event-stream/next.yaml#/schemas/Tombstone"
+                $ref: "../../schemas/events/next.json#/$defs/JSONCommit"
   ```
 
   Zet `Feed-Cursor` op de 200-response van elk snapshot-endpoint:
@@ -183,9 +192,8 @@ schemas:
   EventBasis:
     description: |
       Een wijziging als CloudEvent 1.0 (JSON-formaat), geleverd als `data` van
-      een SSE-bericht. Vul aan met `type` (de eventtypes van het eigen domein)
-      en `data` (de resource na de wijziging, een `Tombstone` of een
-      `Redactie`).
+      een SSE-bericht. Vul aan met `type` (de handelingen van het eigen domein)
+      en `data` (een JSONCommit, of een `Redactie`).
     allOf:
       - $ref: "../../schemas/events/next.json#/$defs/CloudEvent"
       - type: object
@@ -233,13 +241,14 @@ schemas:
             type: string
             example: application/json
           data:
-            description: De resource na de wijziging, een `Tombstone` of een `Redactie`.
+            description: Een JSONCommit (`schemas/events`), of een `Redactie`.
 
   Tombstone:
     type: object
     description: |
       Restant van een verwijderde resource: alleen de identificatie, zodat
-      clients hun lokale kopie kunnen opruimen.
+      clients hun lokale kopie kunnen opruimen. Voor `patterns/sync-feed`; op
+      de event-stroom is verwijderen een JSONCommit met `deleted: true`.
     required:
       - url
     properties:
