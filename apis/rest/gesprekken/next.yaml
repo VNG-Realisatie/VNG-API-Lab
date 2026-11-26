@@ -26,7 +26,8 @@ info:
     Gesprek/Gespreksbijdrage/Gespreksdeelname/GelezenGespreksbijdrage) zijn
     hier verwijderd.
 
-    Model: Visma Roxit (Johannes Battjes), versie 2026-09-30
+    Bouwt voort op 0.3.0 (`v0.3.0.yaml`): het model van Visma Roxit
+    (Johannes Battjes), versie 2026-09-30.
 
     Het gesprek is het onderwerp; een zaak is hooguit de aanleiding. Eén zaak
     kan daarom aanleiding zijn voor meerdere gesprekken.
@@ -204,8 +205,8 @@ info:
       eventhistorie, en afnemers krijgen
       `nl.vng.gesprekken.gespreksbijdrage.geredigeerd`.
 
-    Versie: next (ontwikkeling)
-  version: "next"
+    Versie: 0.4.0 (ontwikkeling)
+  version: "0.4.0"
   contact:
     name: VNG Realisatie
   license:
