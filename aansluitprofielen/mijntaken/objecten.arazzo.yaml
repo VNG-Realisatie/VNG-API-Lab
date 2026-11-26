@@ -1,0 +1,242 @@
+arazzo: 1.0.1
+info:
+  title: Aansluitprofiel MijnTaken op de Objecten API (Open Object 2.8)
+  version: 0.1.0
+  description: |
+    Dezelfde burgerflows als `mijntaken-next.arazzo.yaml`, maar direct op een Objecten API
+    waarin taken objecten zijn van een objecttype "taak". Zo werken Open Inwoner en de
+    Dimpact-/GZAC-portaaltaak nu: een procesapplicatie schrijft een taakobject, het portaal
+    leest het.
+
+    Bron: Objecten API 2.8.0 (`apis/rest/openobject-objecten/v2.8.0.yaml`), met het
+    taakschema dat Open Inwoner als `UrlTaak` leest (objecttype "generieke dienstverlening").
+    Het portaal filtert in de bron, met `type` en `data_attr`, niet bij zichzelf.
+
+    Veldmapping (Objecten naar MijnTaken):
+      uuid                                -> uuid
+      record.data.titel                   -> titel.nl
+      record.data.toelichting             -> toelichting.nl
+      record.data.status open             -> status open
+      record.data.status afgerond, verwerkt -> status afgerond
+      record.data.status gesloten         -> status geannuleerd
+      record.data.verloopdatum            -> deadline
+      record.data.koppeling {registratie: zaak, value: uuid}
+                                          -> context.urn; de koppeling is een uuid, geen
+                                             URN, dus de adapter moet de URN maken
+      record.data.url.uri                 -> uitvoering.canonicalUrl
+      record.data.soort                   -> uitvoering.type
+      record.data.identificatie           -> niet in MijnTaken: de burger komt uit het token
+
+    Let op: de Objecten API autoriseert per applicatie (`Authorization: Token ...`) en per
+    objecttype, niet per burger. De burger is een filter op de inhoud van het object, met
+    het BSN in de URL. De twee autorisatieworkflows hieronder falen daarom tegen een
+    standaard Open Object.
+
+sourceDescriptions:
+  - name: objecten
+    url: ../../apis/rest/openobject-objecten/v2.8.0.yaml
+    type: openapi
+
+workflows:
+  - workflowId: overzicht-naar-detail
+    summary: Burger opent zijn takenlijst en klikt een taak open
+    inputs:
+      type: object
+      required: [tokenA, bsnA, taakType]
+      properties:
+        tokenA:
+          type: string
+          description: Toegangstoken. In Open Object is dit een applicatietoken.
+        bsnA:
+          type: string
+          description: BSN van testburger A.
+        taakType:
+          type: string
+          description: URL van het objecttype "taak" in de Objecttypen API.
+    steps:
+      - stepId: zoek-taken
+        description: Overzicht. Filteren in de bron op objecttype en burger.
+        operationId: $sourceDescriptions.objecten.object_list
+        parameters:
+          - in: query
+            name: type
+            value: $inputs.taakType
+          - in: query
+            name: data_attr
+            value: identificatie__value__exact__{$inputs.bsnA}
+          - in: header
+            name: Authorization
+            value: Token {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/uuid != null
+          - condition: $response.body#/results/0/record/data/identificatie/value == $inputs.bsnA
+        outputs:
+          uuid: $response.body#/results/0/uuid
+          titel: $response.body#/results/0/record/data/titel
+          status: $response.body#/results/0/record/data/status
+          deadline: $response.body#/results/0/record/data/verloopdatum
+          zaak: $response.body#/results/0/record/data/koppeling/value
+          uitvoerUrl: $response.body#/results/0/record/data/url/uri
+
+      - stepId: haal-detail
+        operationId: $sourceDescriptions.objecten.object_read
+        parameters:
+          - in: path
+            name: uuid
+            value: $steps.zoek-taken.outputs.uuid
+          - in: header
+            name: Authorization
+            value: Token {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/uuid == $steps.zoek-taken.outputs.uuid
+          - condition: $response.body#/record/data/titel == $steps.zoek-taken.outputs.titel
+          - condition: $response.body#/record/data/status == $steps.zoek-taken.outputs.status
+          - condition: $response.body#/record/data/verloopdatum == $steps.zoek-taken.outputs.deadline
+          - condition: $response.body#/record/data/koppeling/value == $steps.zoek-taken.outputs.zaak
+          - condition: $response.body#/record/data/url/uri == $steps.zoek-taken.outputs.uitvoerUrl
+
+  - workflowId: taken-bij-zaak
+    summary: Burger opent een zaak en ziet de taken die daarbij horen
+    description: |
+      De koppeling is het uuid van de zaak (niet de URN uit MijnZaken). Elke teruggegeven
+      taak moet naar die zaak verwijzen.
+    inputs:
+      type: object
+      required: [tokenA, bsnA, taakType, zaakA]
+      properties:
+        tokenA:
+          type: string
+        bsnA:
+          type: string
+        taakType:
+          type: string
+        zaakA:
+          type: string
+          description: uuid van een zaak van burger A met minstens één taak.
+    steps:
+      - stepId: zoek-taken-bij-zaak
+        operationId: $sourceDescriptions.objecten.object_list
+        parameters:
+          - in: query
+            name: type
+            value: $inputs.taakType
+          - in: query
+            name: data_attr
+            value: koppeling__value__exact__{$inputs.zaakA}
+          - in: header
+            name: Authorization
+            value: Token {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/record/data/koppeling/value == $inputs.zaakA
+          - condition: $response.body#/results/0/record/data/identificatie/value == $inputs.bsnA
+
+  - workflowId: zonder-token
+    summary: Zonder token geeft de API niets prijs
+    steps:
+      - stepId: zoek-zonder-token
+        operationId: $sourceDescriptions.objecten.object_list
+        successCriteria:
+          - condition: $statusCode == 401 || $statusCode == 403
+
+  - workflowId: onbekende-taak
+    summary: Een taak die niet bestaat geeft 404
+    inputs:
+      type: object
+      required: [tokenA]
+      properties:
+        tokenA:
+          type: string
+    steps:
+      - stepId: haal-onbekende-taak
+        operationId: $sourceDescriptions.objecten.object_read
+        parameters:
+          - in: path
+            name: uuid
+            value: 00000000-0000-4000-8000-000000000000
+          - in: header
+            name: Authorization
+            value: Token {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 404
+
+  - workflowId: burger-a-haalt-taak-van-burger-b
+    summary: Met het token van burger A is een taak van burger B niet op te halen
+    description: |
+      Faalt tegen standaard Open Object: een applicatietoken ziet alle objecten van het
+      objecttype. Slaagt pas als de bron (of een adapter) tokens per burger afdwingt.
+    inputs:
+      type: object
+      required: [tokenA, tokenB, bsnB, taakType]
+      properties:
+        tokenA:
+          type: string
+        tokenB:
+          type: string
+        bsnB:
+          type: string
+        taakType:
+          type: string
+    steps:
+      - stepId: b-zoekt-eigen-taken
+        operationId: $sourceDescriptions.objecten.object_list
+        parameters:
+          - in: query
+            name: type
+            value: $inputs.taakType
+          - in: query
+            name: data_attr
+            value: identificatie__value__exact__{$inputs.bsnB}
+          - in: header
+            name: Authorization
+            value: Token {$inputs.tokenB}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/uuid != null
+        outputs:
+          uuidVanB: $response.body#/results/0/uuid
+
+      - stepId: a-haalt-taak-van-b
+        operationId: $sourceDescriptions.objecten.object_read
+        parameters:
+          - in: path
+            name: uuid
+            value: $steps.b-zoekt-eigen-taken.outputs.uuidVanB
+          - in: header
+            name: Authorization
+            value: Token {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 403 || $statusCode == 404
+
+  - workflowId: burger-a-zoekt-op-bsn-van-burger-b
+    summary: Met het token van burger A levert filteren op het BSN van burger B niets op
+    description: |
+      In de Objecten API is het BSN een filter op de inhoud van het object, geen
+      geverifieerde claim. Faalt daarom tegen standaard Open Object.
+    inputs:
+      type: object
+      required: [tokenA, bsnB, taakType]
+      properties:
+        tokenA:
+          type: string
+        bsnB:
+          type: string
+        taakType:
+          type: string
+    steps:
+      - stepId: a-zoekt-op-bsn-van-b
+        operationId: $sourceDescriptions.objecten.object_list
+        parameters:
+          - in: query
+            name: type
+            value: $inputs.taakType
+          - in: query
+            name: data_attr
+            value: identificatie__value__exact__{$inputs.bsnB}
+          - in: header
+            name: Authorization
+            value: Token {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 403 || $response.body#/count == 0

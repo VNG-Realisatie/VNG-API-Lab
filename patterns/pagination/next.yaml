@@ -1,0 +1,128 @@
+# Pagination Pattern for ZGW APIs
+# Contains query parameters and paginated list schema templates
+#
+# next: voegt cursor-paginering toe (CursorPaginatedBase) naast de
+# paginanummers uit 0.0.1. Nieuwe API's gebruiken de cursor (ADR-0003).
+
+title: Paginering
+description: |
+  Bevat herbruikbare parameters en schemafundamenten voor gepagineerde
+  lijst-endpoints, in twee varianten.
+
+  **Cursor (voorkeur voor nieuwe API's).** De server geeft per pagina een
+  `next`-link met een opake `cursor`. Een afnemer volgt die link tot `next`
+  `null` is. Er is geen `previous` en geen paginanummer: een cursor wijst een
+  vaste positie in de sortering aan, zodat een item dat tijdens het bladeren
+  wordt toegevoegd of verwijderd geen andere items over de paginagrens
+  schuift. Dat volgt ADR-0003. `count` is optioneel, omdat tellen bij grote
+  lijsten duur is; een API die het goedkoop kan, levert het.
+
+  Gebruik `cursor` en `pageSize` als parameters en `CursorPaginatedBase` als
+  basis van het lijstschema:
+
+  ```yaml
+  parameters:
+    - $ref: "../../patterns/pagination/next.yaml#/parameters/cursor"
+    - $ref: "../../patterns/pagination/next.yaml#/parameters/pageSize"
+  ...
+  GesprekList:
+    allOf:
+      - $ref: "../../patterns/pagination/next.yaml#/schemas/CursorPaginatedBase"
+      - type: object
+        properties:
+          results:
+            items:
+              $ref: "#/components/schemas/Gesprek"
+  ```
+
+  De cursor is opaak: bewaar en geef hem mee, interpreteer hem niet. Een
+  server mag het formaat wijzigen. Filters en sortering staan in de
+  `next`-link zelf; een afnemer hoeft ze niet opnieuw mee te geven. Bij een
+  zoek-endpoint met de filters in de body (`POST …/zoek`) bevat de
+  `next`-link alleen `cursor` en `pageSize`, en stuurt de afnemer dezelfde
+  body opnieuw. Een ongeldige of verlopen cursor geeft `400`.
+
+  **Paginanummers (`page`, `PaginatedBase`).** Zoals in 0.0.1, voor
+  bestaande API's die `page` en `previous` al gebruiken.
+
+  Voor het synchroon houden van een kopie (alle wijzigingen, ook
+  verwijderingen) is [`patterns/sync-feed`](../sync-feed/next.yaml) bedoeld;
+  dit pattern is voor het doorbladeren van een lijst.
+parameters:
+  cursor:
+    name: cursor
+    in: query
+    required: false
+    description: >
+      Opake positie uit de `next`-link van een eerdere pagina. Laat weg voor
+      de eerste pagina.
+    schema:
+      type: string
+    example: "MjAyNi0wMy0xMVQxMDowMDowMFp8MDk1YmU2MTU"
+  page:
+    name: page
+    in: query
+    description: Het paginanummer dat moet worden opgehaald.
+    schema:
+      type: integer
+      default: 1
+  pageSize:
+    name: pageSize
+    in: query
+    description: Het aantal items per pagina.
+    schema:
+      type: integer
+      default: 20
+      minimum: 1
+      maximum: 100
+
+schemas:
+  CursorPaginatedBase:
+    type: object
+    description: |
+      Eén pagina van een lijst met cursor-paginering. Vul `results.items` aan
+      met het eigen schema.
+    properties:
+      next:
+        type: string
+        nullable: true
+        format: uri
+        description: >
+          Volledige URL van de volgende pagina, met `cursor`, `pageSize` en
+          de filters van deze aanvraag; `null` op de laatste pagina.
+        example: http://api.example.org/accounts/?cursor=MjAyNi0wMy0xMVQxMDowMDowMFp8MDk1YmU2MTU&pageSize=20
+      count:
+        type: integer
+        description: Optioneel het totale aantal resultaten.
+        example: 123
+      results:
+        type: array
+        items: {}
+    required:
+      - next
+      - results
+
+  PaginatedBase:
+    type: object
+    properties:
+      count:
+        type: integer
+        example: 123
+      next:
+        type: string
+        nullable: true
+        format: uri
+        example: http://api.example.org/accounts/?page=4
+      previous:
+        type: string
+        nullable: true
+        format: uri
+        example: http://api.example.org/accounts/?page=2
+      results:
+        type: array
+        items: {}
+    required:
+      - count
+      - next
+      - previous
+      - results

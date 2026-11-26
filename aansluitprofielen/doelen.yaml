@@ -1,0 +1,117 @@
+# Doelen voor aansluitprofielen/run.mjs. Een doel is: een profiel tegen een bron, met de
+# servers en inputs die daarbij horen. Elk doel draait in twee modi (gedrag en strikt); een
+# check heet <doel>/<modus>/<workflowId>.
+#
+# Velden per doel:
+#   id               naam van het doel, deel van het check-id
+#   profiel          pad naar het Arazzo-bestand
+#   servers          naam: url, voor --server
+#   inputs           naam: waarde, voor --input. Geheimen als ${ENV_VAR}: die komen uit de
+#                    omgeving en staan nooit in git.
+#   start            optioneel: referentieserver die de runner start (commando, poort, env)
+#   gedrag_severity  optioneel: extra severity-instellingen voor modus gedrag
+#   bekende_fouten   check-id of patroon met *, met uitleg. Matcht op het hele check-id of op
+#                    <modus>/<workflowId>.
+#
+# Een eigen implementatie testen kan zonder dit bestand te wijzigen, zie README.md.
+
+doelen:
+  - id: mijnzaken-next
+    profiel: aansluitprofielen/mijnzaken/mijnzaken-next.arazzo.yaml
+    start:
+      commando: node aansluitprofielen/referentie-server.js
+      poort: 4020
+    servers:
+      mijnzaken: http://127.0.0.1:4020
+    inputs:
+      tokenA: token-a
+      tokenB: token-b
+
+  - id: mijntaken-next
+    profiel: aansluitprofielen/mijntaken/mijntaken-next.arazzo.yaml
+    start:
+      commando: node aansluitprofielen/referentie-server.js
+      poort: 4020
+    servers:
+      mijntaken: http://127.0.0.1:4020
+      mijnzaken: http://127.0.0.1:4020
+    inputs:
+      tokenA: token-a
+      tokenB: token-b
+
+  - id: zgw-burger
+    profiel: aansluitprofielen/mijnzaken/zgw.arazzo.yaml
+    start:
+      commando: node aansluitprofielen/mijnzaken/zgw-referentie-server.js
+      poort: 4021
+      env:
+        AUTORISATIE: burger
+    servers:
+      zaken: http://127.0.0.1:4021
+    inputs:
+      tokenA: token-a
+      bsnA: "111222333"
+      tokenB: token-b
+      bsnB: "999993653"
+
+  - id: zgw-applicatie
+    profiel: aansluitprofielen/mijnzaken/zgw.arazzo.yaml
+    start:
+      commando: node aansluitprofielen/mijnzaken/zgw-referentie-server.js
+      poort: 4024
+      env:
+        AUTORISATIE: applicatie
+    servers:
+      zaken: http://127.0.0.1:4024
+    inputs:
+      tokenA: token-a
+      bsnA: "111222333"
+      tokenB: token-b
+      bsnB: "999993653"
+    bekende_fouten:
+      "*/burger-a-haalt-zaak-van-burger-b": ZGW 1.x autoriseert per applicatie, niet per burger
+      "*/burger-a-zoekt-op-bsn-van-burger-b": ZGW 1.x autoriseert per applicatie, niet per burger
+
+  # De Open VTB-spec documenteert geen 401/403/404 en heeft een discriminator die Ajv niet
+  # accepteert. In gedrag is de statuscodecheck daarom ook een waarschuwing; strikt faalt.
+  - id: openvtb-burger
+    profiel: aansluitprofielen/mijntaken/openvtb.arazzo.yaml
+    start:
+      commando: node aansluitprofielen/mijntaken/openvtb-referentie-server.js
+      poort: 4022
+      env:
+        AUTORISATIE: burger
+    servers:
+      taken: http://127.0.0.1:4022
+    inputs:
+      tokenA: token-a
+      burgerA: urn:nld:brp:bsn:111222333
+      zaakA: urn:nld:gemeentevoorbeeld:zaak:zaaknummer:ZAAK-2024-0001
+      tokenB: token-b
+      burgerB: urn:nld:brp:bsn:999993653
+    gedrag_severity:
+      STATUS_CODE_CHECK: warn
+    bekende_fouten:
+      "strikt/*": De Open VTB-spec documenteert geen 401/403/404 en de discriminator op taakSoort is niet valide voor Ajv
+
+  # Zelfde situatie als Open VTB: geen 403/404 in de spec, en nullable zonder type.
+  - id: objecten-burger
+    profiel: aansluitprofielen/mijntaken/objecten.arazzo.yaml
+    start:
+      commando: node aansluitprofielen/mijntaken/objecten-referentie-server.js
+      poort: 4023
+      env:
+        AUTORISATIE: burger
+    servers:
+      objecten: http://127.0.0.1:4023
+    inputs:
+      taakType: http://objecttypen.example.nl/api/v2/objecttypes/7a2b1c3d-0000-4000-8000-00000000aaaa
+      tokenA: token-a
+      bsnA: "111222333"
+      zaakA: 550e8400-e29b-41d4-a716-446655440000
+      tokenB: token-b
+      bsnB: "999993653"
+    gedrag_severity:
+      STATUS_CODE_CHECK: warn
+    bekende_fouten:
+      "strikt/*": De Objecten-spec documenteert geen 403/404 en is niet valide voor Ajv (nullable zonder type)

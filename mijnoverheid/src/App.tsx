@@ -131,16 +131,9 @@ const defaultMockHeaders = {
 };
 
 const customRequestDefaults = {
-  method: "POST",
-  path: "/apis/rest/taken/next/context/zoek",
-  body: JSON.stringify(
-    {
-      klantId: "a8f3c1d2-7e44-4b1a-9c0f-123456789abc",
-      include: ["taken"],
-    },
-    null,
-    2,
-  ),
+  method: "GET",
+  path: "/apis/rest/taken/next/taken?status=open",
+  body: "",
 };
 
 type PageKey =
@@ -390,6 +383,19 @@ const formatDeadline = (isoString?: string) => {
   } catch (e) {
     return isoString;
   }
+};
+
+const formatZaakStatus = (status?: string) =>
+  status ? status.charAt(0).toUpperCase() + status.slice(1) : "";
+
+const formatBestandstype = (mime?: string) =>
+  (mime?.split("/").pop() || "bestand").toUpperCase();
+
+const formatBestandsgrootte = (bytes?: number) => {
+  if (typeof bytes !== "number") return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} kB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
 };
 
 const formatAfspraakWhen = (startStr: string, endStr?: string) => {
@@ -1652,17 +1658,19 @@ function ZaakDetailPage({
 
       <h1>{zaak.naam}</h1>
 
-      {zaak.openstaandeTaak && (
-        <div className="alert--warning zaak-alert" role="note">
+      {zaak.openstaandeTaken?.map((taak: any) => (
+        <div key={taak.uuid} className="alert--warning zaak-alert" role="note">
           <div>
-            <strong className="zaak-alert__title">{zaak.openstaandeTaak.titel}</strong>
-            <span className="zaak-alert__deadline">⚠ {zaak.openstaandeTaak.deadlineText}</span>
+            <strong className="zaak-alert__title">{taak.titel?.nl}</strong>
+            {taak.deadline && (
+              <span className="zaak-alert__deadline">⚠ {formatDeadline(taak.deadline)}</span>
+            )}
           </div>
-          <a className="button-primary" href={zaak.openstaandeTaak.actieUrl}>
-            Informatie geven
+          <a className="button-primary" href={taak.uitvoering?.canonicalUrl}>
+            Uitvoeren
           </a>
         </div>
-      )}
+      ))}
 
       {/* Status Timeline */}
       <section className="section">
@@ -1710,7 +1718,7 @@ function ZaakDetailPage({
           <dt>Zaaknummer</dt>
           <dd className="dd-mono">{zaak.zaaknummer}</dd>
           <dt>Status</dt>
-          <dd>{zaak.status}</dd>
+          <dd>{zaak.huidigeStatus || formatZaakStatus(zaak.status)}</dd>
         </dl>
       </section>
 
@@ -1724,7 +1732,7 @@ function ZaakDetailPage({
                 <Icon id="icon-clipboard" />
                 <span>{doc.naam}</span>
                 <span className="zaak-doc__type">
-                  ({doc.type.toUpperCase()}, {doc.grootte})
+                  ({formatBestandstype(doc.formaat)}, {formatBestandsgrootte(doc.bestandsgrootte)})
                 </span>
               </div>
               <span>
@@ -1734,8 +1742,10 @@ function ZaakDetailPage({
                   year: "numeric",
                 })}
               </span>
-              <span className="zaak-doc__bron">{doc.bron}</span>
-              <a className="zaak-doc__download" href="#" onClick={(e) => e.preventDefault()}>
+              <span className="zaak-doc__bron">
+                {doc.bron === "burger" ? "Door u geüpload" : "Van de gemeente"}
+              </span>
+              <a className="zaak-doc__download" href={doc.downloadUrl}>
                 Download
               </a>
             </div>
@@ -2756,16 +2766,12 @@ export function App() {
   const loadTaken = useCallback(async () => {
     setTaken((s) => ({ ...s, status: "loading", error: undefined }));
     try {
-      const res = await trackedFetch(buildUrl(`/apis/rest/taken/next/context/zoek`), {
-        method: "POST",
+      // De burger komt uit het token; er gaat geen klantId mee.
+      const res = await trackedFetch(buildUrl(`/apis/rest/taken/next/taken?pageSize=100`), {
         headers: { ...defaultMockHeaders },
-        body: JSON.stringify({
-          klantId: "a8f3c1d2-7e44-4b1a-9c0f-123456789abc",
-          include: ["taken"],
-        }),
       });
       const data = await jsonOrThrow(res);
-      const mapped: Taak[] = (data.taken || []).map((t: any) => {
+      const mapped: Taak[] = (data.results || []).map((t: any) => {
         const isActionable = t.actieNodig !== false && t.status !== "ter-info";
         const isAi =
           t.uitvoering?.type === "formulier" || (t.labels && t.labels.includes("ingevuld"));
@@ -2887,13 +2893,12 @@ export function App() {
   const loadZaken = useCallback(async () => {
     setCases((s) => ({ ...s, status: "loading", error: undefined }));
     try {
-      const res = await trackedFetch(buildUrl(`/apis/rest/zaken/next/zaken/zoek`), {
-        method: "POST",
+      // De burger komt uit het token; er gaat geen klantId mee.
+      const res = await trackedFetch(buildUrl(`/apis/rest/zaken/next/zaken?pageSize=100`), {
         headers: { ...defaultMockHeaders },
-        body: JSON.stringify({ klantId: "a8f3c1d2-7e44-4b1a-9c0f-123456789abc" }),
       });
       const data = await jsonOrThrow(res);
-      setCases({ status: "ready", data: Array.isArray(data) ? data : [] });
+      setCases({ status: "ready", data: Array.isArray(data?.results) ? data.results : [] });
     } catch (err) {
       setCases({ status: "error", data: [], error: errText(err) });
     }
@@ -2947,7 +2952,28 @@ export function App() {
         if (!res.ok)
           throw new Error(`Verzoek mislukte (HTTP ${res.status} ${res.statusText || ""})`.trim());
         const data = await res.json();
-        setSelectedCase({ status: "ready", data });
+        // Openstaande taken bij deze zaak komen uit MijnTaken, gekoppeld via de URN van de zaak.
+        let openstaandeTaken: any[] = [];
+        if (data.urn) {
+          try {
+            const takenRes = await trackedFetch(
+              buildUrl(
+                `/apis/rest/taken/next/taken?status=open&context=${encodeURIComponent(data.urn)}`,
+              ),
+              { headers: { ...defaultMockHeaders } },
+            );
+            if (takenRes.ok) {
+              const taken = await takenRes.json();
+              // Filter ook zelf: de mock negeert queryparameters.
+              openstaandeTaken = (taken.results || []).filter(
+                (t: any) => t.context?.urn === data.urn && t.status === "open",
+              );
+            }
+          } catch {
+            // Taken zijn aanvullend; de zaak blijft zichtbaar als MijnTaken niet antwoordt.
+          }
+        }
+        setSelectedCase({ status: "ready", data: { ...data, openstaandeTaken } });
       } catch (err: any) {
         setSelectedCase({ status: "error", data: null, error: err?.message || "Onbekende fout." });
       }
@@ -3425,7 +3451,7 @@ export function App() {
                     type="text"
                     value={customPath}
                     onChange={(e) => setCustomPath(e.target.value)}
-                    placeholder="/apis/rest/taken/next/context/zoek"
+                    placeholder="/apis/rest/taken/next/taken?status=open"
                     aria-label="Pad of URL"
                   />
                 </div>

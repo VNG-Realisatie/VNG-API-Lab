@@ -1,0 +1,197 @@
+arazzo: 1.0.1
+info:
+  title: Aansluitprofiel MijnTaken op MijnTaken API (next)
+  version: 0.1.0
+  description: |
+    Stateful conformancetest voor de MijnTaken API (`apis/rest/taken/next.yaml`). Dezelfde
+    workflows als bij MijnZaken, plus één over twee API's heen: de taken bij een zaak.
+
+    Vereist een testdataset met twee testburgers (A en B). Burger A heeft een zaak met
+    minstens één open taak; burger B heeft minstens één taak. Zie `aansluitprofielen/README.md`.
+
+sourceDescriptions:
+  - name: mijntaken
+    url: ../../apis/rest/taken/next.yaml
+    type: openapi
+  - name: mijnzaken
+    url: ../../apis/rest/zaken/next.yaml
+    type: openapi
+
+workflows:
+  - workflowId: overzicht-naar-detail
+    summary: Burger opent zijn takenlijst en klikt een taak open
+    inputs:
+      type: object
+      required: [tokenA]
+      properties:
+        tokenA:
+          type: string
+          description: Toegangstoken namens testburger A.
+    steps:
+      - stepId: zoek-taken
+        operationId: $sourceDescriptions.mijntaken.listTaken
+        parameters:
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/uuid != null
+        outputs:
+          uuid: $response.body#/results/0/uuid
+          titel: $response.body#/results/0/titel/nl
+          status: $response.body#/results/0/status
+          context: $response.body#/results/0/context/urn
+
+      - stepId: haal-detail
+        operationId: $sourceDescriptions.mijntaken.retrieveTaak
+        parameters:
+          - in: path
+            name: uuid
+            value: $steps.zoek-taken.outputs.uuid
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/uuid == $steps.zoek-taken.outputs.uuid
+          - condition: $response.body#/titel/nl == $steps.zoek-taken.outputs.titel
+          - condition: $response.body#/status == $steps.zoek-taken.outputs.status
+          - condition: $response.body#/context/urn == $steps.zoek-taken.outputs.context
+
+  - workflowId: taken-bij-zaak
+    summary: Burger opent een zaak en ziet de taken die daarbij horen
+    description: |
+      Over twee API's heen. De URN uit MijnZaken is het filter voor MijnTaken, en elke
+      teruggegeven taak moet naar die zaak verwijzen.
+    inputs:
+      type: object
+      required: [tokenA]
+      properties:
+        tokenA:
+          type: string
+    steps:
+      - stepId: zoek-zaken
+        operationId: $sourceDescriptions.mijnzaken.listZaken
+        parameters:
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/urn != null
+        outputs:
+          urn: $response.body#/results/0/urn
+
+      - stepId: zoek-taken-bij-zaak
+        operationId: $sourceDescriptions.mijntaken.listTaken
+        parameters:
+          - in: query
+            name: context
+            value: $steps.zoek-zaken.outputs.urn
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/context/urn == $steps.zoek-zaken.outputs.urn
+
+  - workflowId: zonder-token
+    summary: Zonder token geeft de API niets prijs
+    steps:
+      - stepId: zoek-zonder-token
+        operationId: $sourceDescriptions.mijntaken.listTaken
+        successCriteria:
+          - condition: $statusCode == 401
+
+  - workflowId: onbekende-taak
+    summary: Een taak die niet bestaat geeft 404
+    inputs:
+      type: object
+      required: [tokenA]
+      properties:
+        tokenA:
+          type: string
+    steps:
+      - stepId: haal-onbekende-taak
+        operationId: $sourceDescriptions.mijntaken.retrieveTaak
+        parameters:
+          - in: path
+            name: uuid
+            value: 00000000-0000-4000-8000-000000000000
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 404
+
+  - workflowId: burger-a-haalt-taak-van-burger-b
+    summary: Burger A kan een taak van burger B niet openen, ook niet met het uuid
+    inputs:
+      type: object
+      required: [tokenA, tokenB]
+      properties:
+        tokenA:
+          type: string
+        tokenB:
+          type: string
+    steps:
+      - stepId: b-zoekt-eigen-taken
+        operationId: $sourceDescriptions.mijntaken.listTaken
+        parameters:
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenB}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/uuid != null
+        outputs:
+          uuidVanB: $response.body#/results/0/uuid
+
+      - stepId: a-haalt-taak-van-b
+        operationId: $sourceDescriptions.mijntaken.retrieveTaak
+        parameters:
+          - in: path
+            name: uuid
+            value: $steps.b-zoekt-eigen-taken.outputs.uuidVanB
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 403
+
+  - workflowId: overzicht-bevat-alleen-eigen-taken
+    summary: De takenlijst van burger A bevat de taak van burger B niet
+    description: |
+      Beperking: Arazzo kan "de lijst bevat dit uuid niet" niet uitdrukken met een waarde
+      uit een eerdere stap. Deze check vergelijkt daarom alleen het eerste resultaat.
+    inputs:
+      type: object
+      required: [tokenA, tokenB]
+      properties:
+        tokenA:
+          type: string
+        tokenB:
+          type: string
+    steps:
+      - stepId: b-zoekt-eigen-taken
+        operationId: $sourceDescriptions.mijntaken.listTaken
+        parameters:
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenB}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/uuid != null
+        outputs:
+          uuidVanB: $response.body#/results/0/uuid
+
+      - stepId: a-zoekt-eigen-taken
+        operationId: $sourceDescriptions.mijntaken.listTaken
+        parameters:
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/uuid != $steps.b-zoekt-eigen-taken.outputs.uuidVanB

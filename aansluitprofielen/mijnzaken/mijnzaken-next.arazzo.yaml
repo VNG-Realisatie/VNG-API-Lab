@@ -1,0 +1,176 @@
+arazzo: 1.0.1
+info:
+  title: Aansluitprofiel MijnZaken op MijnZaken API (next)
+  version: 0.3.0
+  description: |
+    Stateful conformancetest voor de MijnZaken API (`apis/rest/zaken/next.yaml`).
+
+    Een losse schema-test (Schemathesis, Spectral) controleert of elke response de juiste
+    vorm heeft. Deze test controleert of een implementatie zich als geheel goed gedraagt:
+    calls die van elkaar afhangen, gegevens die tussen overzicht en detail moeten kloppen,
+    en autorisatie op het niveau van één burger.
+
+    Vereist een testdataset met twee testburgers (A en B) die elk minstens één zaak hebben.
+    Zie `aansluitprofielen/README.md`.
+
+sourceDescriptions:
+  - name: mijnzaken
+    url: ../../apis/rest/zaken/next.yaml
+    type: openapi
+
+workflows:
+  - workflowId: overzicht-naar-detail
+    summary: Burger opent zijn zakenoverzicht en klikt een zaak open
+    description: |
+      De kernflow van MijnZaken. Het detail van een zaak moet dezelfde gegevens tonen als de
+      samenvatting in het overzicht, anders ziet de burger twee verschillende dingen.
+    inputs:
+      type: object
+      required: [tokenA]
+      properties:
+        tokenA:
+          type: string
+          description: Toegangstoken namens testburger A. De bron leidt de burger hieruit af.
+    steps:
+      - stepId: zoek-zaken
+        operationId: $sourceDescriptions.mijnzaken.listZaken
+        parameters:
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/uuid != null
+        outputs:
+          uuid: $response.body#/results/0/uuid
+          urn: $response.body#/results/0/urn
+          zaaknummer: $response.body#/results/0/zaaknummer
+          naam: $response.body#/results/0/naam
+          status: $response.body#/results/0/status
+          datumAanvraag: $response.body#/results/0/datumAanvraag
+
+      - stepId: haal-detail
+        operationId: $sourceDescriptions.mijnzaken.retrieveZaak
+        parameters:
+          - in: path
+            name: uuid
+            value: $steps.zoek-zaken.outputs.uuid
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/uuid == $steps.zoek-zaken.outputs.uuid
+          - condition: $response.body#/urn == $steps.zoek-zaken.outputs.urn
+          - condition: $response.body#/zaaknummer == $steps.zoek-zaken.outputs.zaaknummer
+          - condition: $response.body#/naam == $steps.zoek-zaken.outputs.naam
+          - condition: $response.body#/status == $steps.zoek-zaken.outputs.status
+          - condition: $response.body#/datumAanvraag == $steps.zoek-zaken.outputs.datumAanvraag
+
+  - workflowId: zonder-token
+    summary: Zonder token geeft de API niets prijs
+    steps:
+      - stepId: zoek-zonder-token
+        operationId: $sourceDescriptions.mijnzaken.listZaken
+        successCriteria:
+          - condition: $statusCode == 401
+
+  - workflowId: onbekende-zaak
+    summary: Een zaak die niet bestaat geeft 404
+    inputs:
+      type: object
+      required: [tokenA]
+      properties:
+        tokenA:
+          type: string
+    steps:
+      - stepId: haal-onbekende-zaak
+        operationId: $sourceDescriptions.mijnzaken.retrieveZaak
+        parameters:
+          - in: path
+            name: uuid
+            value: 00000000-0000-4000-8000-000000000000
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 404
+
+  - workflowId: burger-a-haalt-zaak-van-burger-b
+    summary: Burger A kan een zaak van burger B niet openen, ook niet met het uuid
+    description: |
+      Autorisatie per burger, niet per applicatie. De spec schrijft 403 voor
+      (`RecordNietGemachtigd` uit `patterns/federated-auth`).
+    inputs:
+      type: object
+      required: [tokenA, tokenB]
+      properties:
+        tokenA:
+          type: string
+        tokenB:
+          type: string
+    steps:
+      - stepId: b-zoekt-eigen-zaken
+        operationId: $sourceDescriptions.mijnzaken.listZaken
+        parameters:
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenB}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/uuid != null
+        outputs:
+          uuidVanB: $response.body#/results/0/uuid
+
+      - stepId: a-haalt-zaak-van-b
+        operationId: $sourceDescriptions.mijnzaken.retrieveZaak
+        parameters:
+          - in: path
+            name: uuid
+            value: $steps.b-zoekt-eigen-zaken.outputs.uuidVanB
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 403
+
+  - workflowId: overzicht-bevat-alleen-eigen-zaken
+    summary: Het overzicht van burger A bevat de zaak van burger B niet
+    description: |
+      Vervangt de oude test "zoek op klantId van B": er is geen klantId meer. Wel moet de
+      bron het overzicht zelf beperken tot de burger uit het token.
+
+      Beperking: Arazzo kan "de lijst bevat dit uuid niet" niet uitdrukken met een waarde
+      uit een eerdere stap. Deze check vergelijkt daarom alleen het eerste resultaat. Een
+      bron die op applicatieniveau autoriseert, valt hier wel door (de lijsten van A en B
+      zijn dan gelijk).
+    inputs:
+      type: object
+      required: [tokenA, tokenB]
+      properties:
+        tokenA:
+          type: string
+        tokenB:
+          type: string
+    steps:
+      - stepId: b-zoekt-eigen-zaken
+        operationId: $sourceDescriptions.mijnzaken.listZaken
+        parameters:
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenB}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/uuid != null
+        outputs:
+          uuidVanB: $response.body#/results/0/uuid
+
+      - stepId: a-zoekt-eigen-zaken
+        operationId: $sourceDescriptions.mijnzaken.listZaken
+        parameters:
+          - in: header
+            name: Authorization
+            value: Bearer {$inputs.tokenA}
+        successCriteria:
+          - condition: $statusCode == 200
+          - condition: $response.body#/results/0/uuid != $steps.b-zoekt-eigen-zaken.outputs.uuidVanB

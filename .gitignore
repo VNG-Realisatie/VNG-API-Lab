@@ -19,3 +19,6 @@ docs/.portal-cache.json
 docs/.respec-cache.json
 
 .DS_Store
+
+# Ruwe Respect-uitvoer van aansluitprofielen/run.mjs
+aansluitprofielen/results/raw/
